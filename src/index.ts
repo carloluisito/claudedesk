@@ -202,14 +202,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
       console.log('[Shutdown] Stopping tunnels...');
       await tunnelManager.stopAllTunnels();
 
-      // 4. Clean up terminal sessions (kills Claude processes)
-      console.log('[Shutdown] Cleaning up terminal sessions...');
+      // 4. Kill Claude processes without deleting session data (preserves sessions for restart)
+      console.log('[Shutdown] Stopping Claude processes (preserving sessions)...');
       const sessions = terminalSessionManager.getAllSessions();
       for (const session of sessions) {
         try {
-          await terminalSessionManager.deleteSession(session.id);
+          terminalSessionManager.cancelSession(session.id);
         } catch (err) {
-          console.warn(`[Shutdown] Failed to clean up session ${session.id}:`, err);
+          console.warn(`[Shutdown] Failed to stop session ${session.id}:`, err);
         }
       }
 

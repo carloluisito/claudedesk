@@ -285,9 +285,9 @@ Returns server health status and version information. Used for Docker healthchec
   "success": true,
   "data": {
     "status": "ok",
-    "version": "2.0.0",
+    "version": "1.0.9",
     "uptime": 12345,
-    "timestamp": "2024-01-27T12:00:00.000Z"
+    "timestamp": "2026-01-28T12:00:00.000Z"
   }
 }
 ```

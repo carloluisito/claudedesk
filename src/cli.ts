@@ -105,7 +105,7 @@ ENVIRONMENT VARIABLES:
   CLAUDEDESK_DATA_DIR   Data directory path
   ALLOW_REMOTE          Set to 'true' to allow remote access
 
-For more information, visit: https://github.com/yourusername/claudedesk
+For more information, visit: https://github.com/carloluisito/claudedesk
 `);
 }
 

@@ -197,7 +197,7 @@ docker compose down
 # Restore application data
 docker run --rm \
   -v claudedesk-data:/data \
-  -v $(pwd)/backups/20240115:/backup \
+  -v $(pwd)/backups/20260128:/backup \
   alpine tar xzf /backup/claudedesk-data.tar.gz -C /data
 
 # Restart services
@@ -303,9 +303,9 @@ Expected response:
   "success": true,
   "data": {
     "status": "ok",
-    "version": "2.0.0",
+    "version": "1.0.9",
     "uptime": 12345,
-    "timestamp": "2024-01-15T12:00:00.000Z"
+    "timestamp": "2026-01-28T12:00:00.000Z"
   }
 }
 ```
