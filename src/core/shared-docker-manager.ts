@@ -26,16 +26,22 @@ export interface ConnectionInfo {
 
 export class SharedDockerManager {
   private state: SharedDockerState;
-  private composeFilePath: string;
-  private configDir: string;
 
   constructor() {
-    this.configDir = join(process.cwd(), 'config');
-    this.composeFilePath = join(this.configDir, 'docker-compose.yml');
     this.state = {
       status: 'stopped',
       services: {},
     };
+  }
+
+  // Lazy path resolution - evaluated when needed, not at construction time
+  // This ensures process.cwd() returns the correct data directory after cli.ts calls process.chdir()
+  private getConfigDir(): string {
+    return join(process.cwd(), 'config');
+  }
+
+  private getComposeFilePath(): string {
+    return join(this.getConfigDir(), 'docker-compose.yml');
   }
 
   async isDockerAvailable(): Promise<boolean> {
@@ -136,12 +142,14 @@ export class SharedDockerManager {
   }
 
   private writeComposeFile(): void {
-    if (!existsSync(this.configDir)) {
-      mkdirSync(this.configDir, { recursive: true });
+    const configDir = this.getConfigDir();
+    const composeFilePath = this.getComposeFilePath();
+    if (!existsSync(configDir)) {
+      mkdirSync(configDir, { recursive: true });
     }
     const yaml = this.generateComposeFile();
-    writeFileSync(this.composeFilePath, yaml.trim());
-    console.log('[SharedDockerManager] Wrote docker-compose.yml');
+    writeFileSync(composeFilePath, yaml.trim());
+    console.log(`[SharedDockerManager] Wrote docker-compose.yml to ${composeFilePath}`);
   }
 
   async start(): Promise<SharedDockerState> {
@@ -173,7 +181,7 @@ export class SharedDockerManager {
 
       // Start docker compose
       const [cmd, ...args] = this.getComposeCommand();
-      const fullArgs = [...args, '-f', this.composeFilePath, 'up', '-d'];
+      const fullArgs = [...args, '-f', this.getComposeFilePath(), 'up', '-d'];
 
       console.log(`[SharedDockerManager] Running: ${cmd} ${fullArgs.join(' ')}`);
 
@@ -235,7 +243,7 @@ export class SharedDockerManager {
 
     try {
       const [cmd, ...args] = this.getComposeCommand();
-      const fullArgs = [...args, '-f', this.composeFilePath, 'down'];
+      const fullArgs = [...args, '-f', this.getComposeFilePath(), 'down'];
 
       console.log(`[SharedDockerManager] Running: ${cmd} ${fullArgs.join(' ')}`);
 

@@ -3,7 +3,11 @@ import { join, dirname } from 'path';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
 
-const CONFIG_PATH = join(process.cwd(), 'config', 'settings.json');
+// Lazy path resolution - evaluated when needed, not at module load time
+// This ensures process.cwd() returns the correct data directory after cli.ts calls process.chdir()
+function getConfigPath(): string {
+  return join(process.cwd(), 'config', 'settings.json');
+}
 
 /**
  * SEC-04: Generate a random password for database services.
@@ -225,12 +229,13 @@ export class SettingsManager {
   }
 
   private load(): Settings {
-    if (!existsSync(CONFIG_PATH)) {
+    const configPath = getConfigPath();
+    if (!existsSync(configPath)) {
       return this.createDefault();
     }
 
     try {
-      const content = readFileSync(CONFIG_PATH, 'utf-8');
+      const content = readFileSync(configPath, 'utf-8');
       const parsed = JSON.parse(content);
 
       // SEC-04: Check if postgres password needs to be generated/migrated
@@ -275,11 +280,11 @@ export class SettingsManager {
 
       // Save if password was migrated
       if (needsSave) {
-        const dir = dirname(CONFIG_PATH);
+        const dir = dirname(configPath);
         if (!existsSync(dir)) {
           mkdirSync(dir, { recursive: true });
         }
-        writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
+        writeFileSync(configPath, JSON.stringify(settings, null, 2));
       }
 
       return settings;
@@ -290,7 +295,8 @@ export class SettingsManager {
   }
 
   private createDefault(): Settings {
-    const dir = dirname(CONFIG_PATH);
+    const configPath = getConfigPath();
+    const dir = dirname(configPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
@@ -308,16 +314,17 @@ export class SettingsManager {
         },
       },
     };
-    writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
+    writeFileSync(configPath, JSON.stringify(settings, null, 2));
     return settings;
   }
 
   private save(): void {
-    const dir = dirname(CONFIG_PATH);
+    const configPath = getConfigPath();
+    const dir = dirname(configPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(CONFIG_PATH, JSON.stringify(this.settings, null, 2));
+    writeFileSync(configPath, JSON.stringify(this.settings, null, 2));
   }
 
   get(): Settings {
