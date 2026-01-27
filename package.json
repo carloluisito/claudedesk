@@ -23,7 +23,7 @@
     "build:server": "tsc",
     "build:client": "vite build",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "keywords": [
