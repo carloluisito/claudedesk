@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Eye, EyeOff, Loader2, AlertCircle, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../lib/cn';
+import { api } from '../../lib/api';
 
 interface TokenStatus {
   source: 'auto' | 'manual' | 'none';
@@ -41,11 +42,8 @@ export function ClaudeTokenSettings() {
   async function loadStatus() {
     setLoading(true);
     try {
-      const response = await fetch('/api/settings/claude/token/status');
-      const result = await response.json();
-      if (result.success) {
-        setStatus(result.data);
-      }
+      const result = await api<TokenStatus>('GET', '/settings/claude/token/status');
+      setStatus(result);
     } catch (error) {
       console.error('Failed to load token status:', error);
     } finally {
@@ -61,16 +59,12 @@ export function ClaudeTokenSettings() {
     setSaveSuccess(false);
 
     try {
-      const response = await fetch('/api/settings/claude/token/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        setValidationResult(result.data);
-      }
+      const result = await api<{ valid: boolean; error?: string; message?: string }>(
+        'POST',
+        '/settings/claude/token/validate',
+        { token: token.trim() }
+      );
+      setValidationResult(result);
     } catch (error) {
       setValidationResult({
         valid: false,
@@ -89,22 +83,14 @@ export function ClaudeTokenSettings() {
     setSaveSuccess(false);
 
     try {
-      const response = await fetch('/api/settings/claude/token', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
-      });
+      await api('PUT', '/settings/claude/token', { token: token.trim() });
+      setSaveSuccess(true);
+      setToken('');
+      setValidationResult(null);
+      await loadStatus();
 
-      const result = await response.json();
-      if (result.success) {
-        setSaveSuccess(true);
-        setToken('');
-        setValidationResult(null);
-        await loadStatus();
-
-        // Clear success message after 3 seconds
-        setTimeout(() => setSaveSuccess(false), 3000);
-      }
+      // Clear success message after 3 seconds
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('Failed to save token:', error);
     } finally {
@@ -120,14 +106,8 @@ export function ClaudeTokenSettings() {
     setDeleting(true);
 
     try {
-      const response = await fetch('/api/settings/claude/token', {
-        method: 'DELETE',
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        await loadStatus();
-      }
+      await api('DELETE', '/settings/claude/token');
+      await loadStatus();
     } catch (error) {
       console.error('Failed to delete token:', error);
     } finally {
@@ -148,9 +128,11 @@ export function ClaudeTokenSettings() {
     );
   }
 
-  const isConnected = status?.source !== 'none';
+  // Fix: explicitly check for valid sources, not just !== 'none'
+  const isConnected = status?.source === 'auto' || status?.source === 'manual';
   const isManual = status?.source === 'manual';
   const isAuto = status?.source === 'auto';
+  const isNone = !isConnected;
 
   return (
     <div className="space-y-6">
@@ -184,7 +166,7 @@ export function ClaudeTokenSettings() {
             <span className="font-medium text-white">
               {isAuto && 'Auto-detected'}
               {isManual && 'Manual Configuration'}
-              {!isConnected && 'Not configured'}
+              {isNone && 'Not configured'}
             </span>
           </div>
 
@@ -398,15 +380,31 @@ export function ClaudeTokenSettings() {
 
             <div>
               <h4 className="font-medium text-white mb-2">Linux / Windows</h4>
-              <p>
-                The token is typically stored in{' '}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">
-                  ~/.claude/.credentials.json
-                </code>
-              </p>
-              <p className="mt-2">
+              <p>The token is stored in one of these locations:</p>
+              <ul className="list-disc list-inside mt-2 space-y-1 pl-2">
+                <li>
+                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                    ~/.claude/.credentials.json
+                  </code>{' '}
+                  (standard)
+                </li>
+                <li>
+                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                    ~/.claude/.credentials
+                  </code>{' '}
+                  (Windows, no extension)
+                </li>
+                <li>
+                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                    ~/.claude/credentials.json
+                  </code>{' '}
+                  (legacy)
+                </li>
+              </ul>
+              <p className="mt-3">
                 Look for the <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">accessToken</code>{' '}
-                field under <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">claudeAiOauth</code>
+                field under <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs">claudeAiOauth</code>,
+                or at the root level (legacy format)
               </p>
             </div>
 

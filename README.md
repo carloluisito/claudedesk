@@ -225,6 +225,36 @@ export GITLAB_CLIENT_ID=your_client_id
 export GITLAB_CLIENT_SECRET=your_client_secret
 ```
 
+### Claude API Token Configuration
+
+ClaudeDesk can display your Claude API usage quota in the terminal interface. This requires access to your Claude OAuth token.
+
+**Auto-detection (Recommended)**
+
+If you have Claude Code CLI installed and authenticated, ClaudeDesk automatically detects your token from these locations:
+
+- `~/.claude/.credentials.json` (standard)
+- `~/.claude/.credentials` (Windows, no extension)
+- `~/.claude/credentials.json` (legacy)
+
+**Manual Configuration**
+
+If auto-detection doesn't work (e.g., token stored elsewhere), you can manually configure it:
+
+1. Go to **Settings > API Configuration**
+2. Expand "How to Get Your Claude API Token" for instructions
+3. Paste your token and click **Test Token**
+4. If valid, click **Save Token**
+
+The token is encrypted using AES-256-GCM before being stored locally.
+
+**Token Priority**
+
+When fetching usage quota, ClaudeDesk checks in this order:
+1. Manual token from Settings (if configured)
+2. Auto-detected token from credential files
+3. No token (quota tracking disabled)
+
 ## API Reference
 
 ### Health Check

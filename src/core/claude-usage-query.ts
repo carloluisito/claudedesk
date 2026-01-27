@@ -278,47 +278,38 @@ export async function getClaudeOAuthToken(): Promise<string | null> {
     console.log('[claude-usage-query] Error reading manual token:', error);
   }
 
-  // Primary location: ~/.claude/.credentials.json
-  const credentialsPath = join(homedir(), '.claude', '.credentials.json');
+  // Credential file paths to check (in priority order)
+  const credentialPaths = [
+    join(homedir(), '.claude', '.credentials.json'),  // Standard path with .json
+    join(homedir(), '.claude', '.credentials'),        // Windows may omit .json extension
+    join(homedir(), '.claude', 'credentials.json'),   // Legacy path without dot prefix
+  ];
 
-  if (existsSync(credentialsPath)) {
-    try {
-      const content = readFileSync(credentialsPath, 'utf-8');
-      const creds: ClaudeCredentialsFile = JSON.parse(content);
+  for (const credentialsPath of credentialPaths) {
+    if (existsSync(credentialsPath)) {
+      try {
+        const content = readFileSync(credentialsPath, 'utf-8');
+        const creds = JSON.parse(content);
 
-      if (creds.claudeAiOauth?.accessToken) {
-        // Check if token is expired
-        if (creds.claudeAiOauth.expiresAt) {
-          const expiresAt = new Date(creds.claudeAiOauth.expiresAt);
-          if (expiresAt <= new Date()) {
-            console.log('[claude-usage-query] OAuth token is expired');
-            // Token is expired, but we'll still try it - the API will tell us for sure
+        // Try claudeAiOauth.accessToken first, then root-level accessToken (legacy)
+        const token = creds.claudeAiOauth?.accessToken || creds.accessToken;
+
+        if (token) {
+          // Check if token is expired (if expiry info available)
+          if (creds.claudeAiOauth?.expiresAt) {
+            const expiresAt = new Date(creds.claudeAiOauth.expiresAt);
+            if (expiresAt <= new Date()) {
+              console.log('[claude-usage-query] OAuth token is expired');
+              // Token is expired, but we'll still try it - the API will tell us for sure
+            }
           }
+
+          console.log(`[claude-usage-query] Found token in ${credentialsPath}`);
+          return token;
         }
-
-        console.log('[claude-usage-query] Found token in .credentials.json');
-        return creds.claudeAiOauth.accessToken;
+      } catch (error) {
+        console.log(`[claude-usage-query] Error reading ${credentialsPath}:`, error);
       }
-    } catch (error) {
-      console.log('[claude-usage-query] Error reading .credentials.json:', error);
-    }
-  }
-
-  // Fallback: Check for older credentials.json format (without dot prefix)
-  const oldCredentialsPath = join(homedir(), '.claude', 'credentials.json');
-  if (existsSync(oldCredentialsPath)) {
-    try {
-      const content = readFileSync(oldCredentialsPath, 'utf-8');
-      const creds = JSON.parse(content);
-
-      // Try both formats
-      const token = creds.claudeAiOauth?.accessToken || creds.accessToken;
-      if (token) {
-        console.log('[claude-usage-query] Found token in credentials.json (legacy)');
-        return token;
-      }
-    } catch (error) {
-      console.log('[claude-usage-query] Error reading credentials.json:', error);
     }
   }
 

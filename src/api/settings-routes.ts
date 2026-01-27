@@ -641,6 +641,9 @@ settingsRouter.get('/browse-directories', (req: Request, res: Response) => {
 /**
  * GET /claude/token/status
  * Returns current token configuration status
+ *
+ * Uses getClaudeOAuthToken to check if a token can be found
+ * (manual or auto-detected from credential files).
  */
 settingsRouter.get('/claude/token/status', async (_req: Request, res: Response) => {
   try {
@@ -664,15 +667,15 @@ settingsRouter.get('/claude/token/status', async (_req: Request, res: Response) 
         }
       } catch (error) {
         console.error('[settings-routes] Error decrypting manual token:', error);
+        // Manual token exists but failed to decrypt - mark as none
+        source = 'none';
       }
     } else {
-      // Check for auto-detected token
+      // No manual token - check if auto-detection can find a token
       const autoToken = await getClaudeOAuthToken();
       if (autoToken) {
         source = 'auto';
-        if (autoToken.length > 12) {
-          tokenPreview = `${autoToken.substring(0, 8)}...${autoToken.substring(autoToken.length - 4)}`;
-        }
+        tokenPreview = '(auto-detected)';
       }
     }
 
