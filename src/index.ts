@@ -1,7 +1,12 @@
 import express from 'express';
 import { createServer } from 'http';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this file (works when installed globally via npm)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import { apiRouter } from './api/routes.js';
 import { terminalRouter } from './api/terminal-routes.js';
 import { appRouter } from './api/app-routes.js';
@@ -66,7 +71,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   app.use('/api/apps', appRouter);
 
   // Static UI files - serve from Vite build
-  const staticDir = join(process.cwd(), 'dist', 'client');
+  // Use __dirname to find client files relative to this file (works with global npm install)
+  const staticDir = join(__dirname, 'client');
   if (existsSync(staticDir)) {
     app.use(express.static(staticDir));
   }
