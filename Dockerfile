@@ -72,5 +72,5 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget -q --spider http://localhost:8787/api/health || exit 1
 
-# Start server
-CMD ["node", "/app/dist/cli.js", "--data-dir", "/data"]
+# Start server (--allow-remote needed for Docker port mapping)
+CMD ["node", "/app/dist/cli.js", "--data-dir", "/data", "--allow-remote"]

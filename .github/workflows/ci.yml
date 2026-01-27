@@ -47,6 +47,6 @@ jobs:
     - name: Test Docker image
       run: |
         docker run -d --name test-container -p 8787:8787 claudedesk:test
-        sleep 15
-        curl -f http://localhost:8787/api/health || exit 1
+        sleep 20
+        curl -f http://localhost:8787/api/health || (docker logs test-container && exit 1)
         docker stop test-container
