@@ -1,0 +1,62 @@
+{
+  "name": "ClaudeDesk",
+  "short_name": "ClaudeDesk",
+  "description": "AI-Powered Development Platform",
+  "id": "com.claudedesk.app",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#09090b",
+  "background_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icons/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Terminal",
+      "short_name": "Terminal",
+      "description": "Start a new Claude terminal session",
+      "url": "/terminal",
+      "icons": [
+        {
+          "src": "/icons/logo.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "short_name": "Settings",
+      "description": "Configure ClaudeDesk",
+      "url": "/settings",
+      "icons": [
+        {
+          "src": "/icons/logo.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "categories": ["developer", "productivity"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
+}

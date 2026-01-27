@@ -1,0 +1,523 @@
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { randomBytes } from 'crypto';
+import { z } from 'zod';
+
+const CONFIG_PATH = join(process.cwd(), 'config', 'settings.json');
+
+/**
+ * SEC-04: Generate a random password for database services.
+ * This replaces hardcoded defaults to improve security.
+ */
+function generateRandomPassword(): string {
+  return randomBytes(16).toString('base64url');
+}
+
+// Docker service schema
+export const DockerServiceSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number(),
+  image: z.string(),
+  version: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  database: z.string().optional(),
+  dataVolume: z.boolean().default(true),
+});
+
+export type DockerService = z.infer<typeof DockerServiceSchema>;
+
+// Docker settings schema
+export const DockerSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  autoStart: z.boolean().default(false),
+  services: z.object({
+    postgres: DockerServiceSchema,
+    redis: DockerServiceSchema,
+  }),
+  networkName: z.string().default('claudedesk-dev-network'),
+});
+
+export type DockerSettings = z.infer<typeof DockerSettingsSchema>;
+
+// Settings schema
+export const SettingsSchema = z.object({
+  // Setup wizard completed
+  setupCompleted: z.boolean().default(false),
+
+  // Security acknowledgment (SEC-01)
+  securityAcknowledged: z.boolean().default(false),
+  acknowledgedAt: z.string().optional(),
+
+  // General settings
+  general: z.object({
+    theme: z.enum(['light', 'dark', 'system']).default('dark'),
+    defaultProofMode: z.enum(['web', 'api', 'cli']).default('web'),
+    logRetentionDays: z.number().min(1).max(365).default(30),
+    autoCleanupArtifacts: z.boolean().default(false),
+  }).default({}),
+
+  // Claude settings (SEC-04: Permission modes)
+  claude: z.object({
+    permissionMode: z.enum(['autonomous', 'read-only']).default('autonomous'),
+  }).default({}),
+
+  // Voice settings
+  voice: z.object({
+    whisperModel: z.enum(['tiny.en', 'base.en', 'small.en', 'medium.en', 'large']).default('small.en'),
+    enabled: z.boolean().default(true),
+  }).default({}),
+
+  // Notification settings
+  notifications: z.object({
+    enabled: z.boolean().default(true),
+    sound: z.boolean().default(true),
+    jobComplete: z.boolean().default(true),
+    jobFailed: z.boolean().default(true),
+  }).default({}),
+
+  // Favorites
+  favorites: z.object({
+    repos: z.array(z.string()).default([]),
+    recentRepos: z.array(z.string()).default([]),
+  }).default({}),
+
+  // Agents settings (pinned agents and auto-detection)
+  agents: z.object({
+    pinnedAgentIds: z.array(z.string()).default([]),
+    autoDetect: z.boolean().default(true),
+  }).default({}),
+
+  // GitHub OAuth settings
+  github: z.object({
+    clientId: z.string().optional(),
+  }).default({}),
+
+  // GitLab OAuth settings
+  gitlab: z.object({
+    clientId: z.string().optional(),
+  }).default({}),
+
+  // Docker settings
+  docker: DockerSettingsSchema.default({
+    enabled: false,
+    autoStart: false,
+    services: {
+      postgres: {
+        enabled: false,
+        port: 5432,
+        image: 'postgres',
+        version: '16-alpine',
+        username: 'claudedesk',
+        password: '', // SEC-04: Generated at runtime
+        database: 'claudedesk_dev',
+        dataVolume: true,
+      },
+      redis: {
+        enabled: false,
+        port: 6379,
+        image: 'redis',
+        version: '7-alpine',
+        dataVolume: false,
+      },
+    },
+    networkName: 'claudedesk-dev-network',
+  }),
+
+  // Remote access tunnel settings
+  tunnel: z.object({
+    enabled: z.boolean().default(false),
+    autoStart: z.boolean().default(false),
+    authToken: z.string().optional(),
+    tokenCreatedAt: z.string().optional(),
+    lastTunnelUrl: z.string().optional(),
+  }).default({ enabled: false, autoStart: false }),
+});
+
+export type Settings = z.infer<typeof SettingsSchema>;
+
+// Default settings
+const DEFAULT_SETTINGS: Settings = {
+  setupCompleted: false,
+  securityAcknowledged: false,
+  general: {
+    theme: 'dark',
+    defaultProofMode: 'web',
+    logRetentionDays: 30,
+    autoCleanupArtifacts: false,
+  },
+  claude: {
+    permissionMode: 'autonomous',
+  },
+  voice: {
+    whisperModel: 'small.en',
+    enabled: true,
+  },
+  notifications: {
+    enabled: true,
+    sound: true,
+    jobComplete: true,
+    jobFailed: true,
+  },
+  favorites: {
+    repos: [],
+    recentRepos: [],
+  },
+  agents: {
+    pinnedAgentIds: [],
+    autoDetect: true,
+  },
+  github: {},
+  gitlab: {},
+  docker: {
+    enabled: false,
+    autoStart: false,
+    services: {
+      postgres: {
+        enabled: false,
+        port: 5432,
+        image: 'postgres',
+        version: '16-alpine',
+        username: 'claudedesk',
+        password: '', // SEC-04: Will be generated on first use
+        database: 'claudedesk_dev',
+        dataVolume: true,
+      },
+      redis: {
+        enabled: false,
+        port: 6379,
+        image: 'redis',
+        version: '7-alpine',
+        dataVolume: false,
+      },
+    },
+    networkName: 'claudedesk-dev-network',
+  },
+  tunnel: {
+    enabled: false,
+    autoStart: false,
+  },
+};
+
+export class SettingsManager {
+  private settings: Settings;
+
+  constructor() {
+    this.settings = this.load();
+  }
+
+  private load(): Settings {
+    if (!existsSync(CONFIG_PATH)) {
+      return this.createDefault();
+    }
+
+    try {
+      const content = readFileSync(CONFIG_PATH, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      // SEC-04: Check if postgres password needs to be generated/migrated
+      let postgresPassword = parsed.docker?.services?.postgres?.password;
+      let needsSave = false;
+
+      // Generate new password if empty or using old hardcoded default
+      if (!postgresPassword || postgresPassword === 'claudedesk_dev') {
+        postgresPassword = generateRandomPassword();
+        needsSave = true;
+        console.log('[Settings] Generated new random password for PostgreSQL');
+      }
+
+      // Merge with defaults to handle missing fields
+      const settings = SettingsSchema.parse({
+        setupCompleted: parsed.setupCompleted ?? DEFAULT_SETTINGS.setupCompleted,
+        securityAcknowledged: parsed.securityAcknowledged ?? DEFAULT_SETTINGS.securityAcknowledged,
+        acknowledgedAt: parsed.acknowledgedAt,
+        general: { ...DEFAULT_SETTINGS.general, ...parsed.general },
+        claude: { ...DEFAULT_SETTINGS.claude, ...parsed.claude },
+        voice: { ...DEFAULT_SETTINGS.voice, ...parsed.voice },
+        notifications: { ...DEFAULT_SETTINGS.notifications, ...parsed.notifications },
+        favorites: { ...DEFAULT_SETTINGS.favorites, ...parsed.favorites },
+        agents: { ...DEFAULT_SETTINGS.agents, ...parsed.agents },
+        github: { ...DEFAULT_SETTINGS.github, ...parsed.github },
+        gitlab: { ...DEFAULT_SETTINGS.gitlab, ...parsed.gitlab },
+        docker: {
+          ...DEFAULT_SETTINGS.docker,
+          ...parsed.docker,
+          services: {
+            postgres: {
+              ...DEFAULT_SETTINGS.docker.services.postgres,
+              ...parsed.docker?.services?.postgres,
+              password: postgresPassword,
+            },
+            redis: { ...DEFAULT_SETTINGS.docker.services.redis, ...parsed.docker?.services?.redis },
+          },
+        },
+        tunnel: { ...DEFAULT_SETTINGS.tunnel, ...parsed.tunnel },
+      });
+
+      // Save if password was migrated
+      if (needsSave) {
+        const dir = dirname(CONFIG_PATH);
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true });
+        }
+        writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
+      }
+
+      return settings;
+    } catch (error) {
+      console.warn('Failed to load settings, using defaults:', error);
+      return this.createDefault();
+    }
+  }
+
+  private createDefault(): Settings {
+    const dir = dirname(CONFIG_PATH);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    // SEC-04: Generate random password for postgres instead of using hardcoded default
+    const settings: Settings = {
+      ...DEFAULT_SETTINGS,
+      docker: {
+        ...DEFAULT_SETTINGS.docker,
+        services: {
+          ...DEFAULT_SETTINGS.docker.services,
+          postgres: {
+            ...DEFAULT_SETTINGS.docker.services.postgres,
+            password: generateRandomPassword(),
+          },
+        },
+      },
+    };
+    writeFileSync(CONFIG_PATH, JSON.stringify(settings, null, 2));
+    return settings;
+  }
+
+  private save(): void {
+    const dir = dirname(CONFIG_PATH);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(CONFIG_PATH, JSON.stringify(this.settings, null, 2));
+  }
+
+  get(): Settings {
+    return { ...this.settings };
+  }
+
+  getGeneral(): Settings['general'] {
+    return { ...this.settings.general };
+  }
+
+  getClaude(): Settings['claude'] {
+    return { ...this.settings.claude };
+  }
+
+  getVoice(): Settings['voice'] {
+    return { ...this.settings.voice };
+  }
+
+  getNotifications(): Settings['notifications'] {
+    return { ...this.settings.notifications };
+  }
+
+  getFavorites(): Settings['favorites'] {
+    return { ...this.settings.favorites };
+  }
+
+  getAgents(): Settings['agents'] {
+    return { ...this.settings.agents };
+  }
+
+  getGitHub(): Settings['github'] {
+    return { ...this.settings.github };
+  }
+
+  getGitLab(): Settings['gitlab'] {
+    return { ...this.settings.gitlab };
+  }
+
+  getDocker(): Settings['docker'] {
+    return JSON.parse(JSON.stringify(this.settings.docker));
+  }
+
+  getTunnel(): Settings['tunnel'] {
+    return { ...this.settings.tunnel };
+  }
+
+  isSetupCompleted(): boolean {
+    return this.settings.setupCompleted;
+  }
+
+  update(updates: Partial<Settings>): Settings {
+    if (updates.setupCompleted !== undefined) {
+      this.settings.setupCompleted = updates.setupCompleted;
+    }
+    if (updates.securityAcknowledged !== undefined) {
+      this.settings.securityAcknowledged = updates.securityAcknowledged;
+    }
+    if (updates.acknowledgedAt !== undefined) {
+      this.settings.acknowledgedAt = updates.acknowledgedAt;
+    }
+    if (updates.general) {
+      this.settings.general = { ...this.settings.general, ...updates.general };
+    }
+    if (updates.claude) {
+      this.settings.claude = { ...this.settings.claude, ...updates.claude };
+    }
+    if (updates.voice) {
+      this.settings.voice = { ...this.settings.voice, ...updates.voice };
+    }
+    if (updates.notifications) {
+      this.settings.notifications = { ...this.settings.notifications, ...updates.notifications };
+    }
+    if (updates.favorites) {
+      this.settings.favorites = { ...this.settings.favorites, ...updates.favorites };
+    }
+    if (updates.agents) {
+      this.settings.agents = { ...this.settings.agents, ...updates.agents };
+    }
+    if (updates.github) {
+      this.settings.github = { ...this.settings.github, ...updates.github };
+    }
+    if (updates.gitlab) {
+      this.settings.gitlab = { ...this.settings.gitlab, ...updates.gitlab };
+    }
+    if (updates.docker) {
+      this.settings.docker = {
+        ...this.settings.docker,
+        ...updates.docker,
+        services: {
+          postgres: { ...this.settings.docker.services.postgres, ...updates.docker.services?.postgres },
+          redis: { ...this.settings.docker.services.redis, ...updates.docker.services?.redis },
+        },
+      };
+    }
+    if (updates.tunnel) {
+      this.settings.tunnel = { ...this.settings.tunnel, ...updates.tunnel };
+    }
+
+    // Validate the merged settings
+    this.settings = SettingsSchema.parse(this.settings);
+    this.save();
+
+    return this.get();
+  }
+
+  updateGeneral(updates: Partial<Settings['general']>): Settings['general'] {
+    this.settings.general = { ...this.settings.general, ...updates };
+    this.save();
+    return this.getGeneral();
+  }
+
+  updateClaude(updates: Partial<Settings['claude']>): Settings['claude'] {
+    this.settings.claude = { ...this.settings.claude, ...updates };
+    this.save();
+    return this.getClaude();
+  }
+
+  updateVoice(updates: Partial<Settings['voice']>): Settings['voice'] {
+    this.settings.voice = { ...this.settings.voice, ...updates };
+    this.save();
+    return this.getVoice();
+  }
+
+  updateNotifications(updates: Partial<Settings['notifications']>): Settings['notifications'] {
+    this.settings.notifications = { ...this.settings.notifications, ...updates };
+    this.save();
+    return this.getNotifications();
+  }
+
+  updateGitHub(updates: Partial<Settings['github']>): Settings['github'] {
+    this.settings.github = { ...this.settings.github, ...updates };
+    this.save();
+    return this.getGitHub();
+  }
+
+  updateGitLab(updates: Partial<Settings['gitlab']>): Settings['gitlab'] {
+    this.settings.gitlab = { ...this.settings.gitlab, ...updates };
+    this.save();
+    return this.getGitLab();
+  }
+
+  updateDocker(updates: Partial<Settings['docker']>): Settings['docker'] {
+    this.settings.docker = {
+      ...this.settings.docker,
+      ...updates,
+      services: {
+        postgres: { ...this.settings.docker.services.postgres, ...updates.services?.postgres },
+        redis: { ...this.settings.docker.services.redis, ...updates.services?.redis },
+      },
+    };
+    this.save();
+    return this.getDocker();
+  }
+
+  updateTunnel(updates: Partial<Settings['tunnel']>): Settings['tunnel'] {
+    this.settings.tunnel = { ...this.settings.tunnel, ...updates };
+    this.save();
+    return this.getTunnel();
+  }
+
+  setSetupCompleted(completed: boolean): void {
+    this.settings.setupCompleted = completed;
+    this.save();
+  }
+
+  // Favorites management
+  addFavoriteRepo(repoId: string): void {
+    if (!this.settings.favorites.repos.includes(repoId)) {
+      this.settings.favorites.repos.push(repoId);
+      this.save();
+    }
+  }
+
+  removeFavoriteRepo(repoId: string): void {
+    this.settings.favorites.repos = this.settings.favorites.repos.filter(id => id !== repoId);
+    this.save();
+  }
+
+  isFavoriteRepo(repoId: string): boolean {
+    return this.settings.favorites.repos.includes(repoId);
+  }
+
+  // Agents management
+  updateAgents(updates: Partial<Settings['agents']>): Settings['agents'] {
+    this.settings.agents = { ...this.settings.agents, ...updates };
+    this.save();
+    return this.getAgents();
+  }
+
+  togglePinnedAgent(agentId: string): void {
+    const index = this.settings.agents.pinnedAgentIds.indexOf(agentId);
+    if (index === -1) {
+      this.settings.agents.pinnedAgentIds.push(agentId);
+    } else {
+      this.settings.agents.pinnedAgentIds.splice(index, 1);
+    }
+    this.save();
+  }
+
+  isPinnedAgent(agentId: string): boolean {
+    return this.settings.agents.pinnedAgentIds.includes(agentId);
+  }
+
+  addRecentRepo(repoId: string): void {
+    // Remove if already exists (to move to front)
+    this.settings.favorites.recentRepos = this.settings.favorites.recentRepos.filter(id => id !== repoId);
+    // Add to front
+    this.settings.favorites.recentRepos.unshift(repoId);
+    // Keep only last 5
+    this.settings.favorites.recentRepos = this.settings.favorites.recentRepos.slice(0, 5);
+    this.save();
+  }
+
+  reset(): Settings {
+    this.settings = { ...DEFAULT_SETTINGS };
+    this.save();
+    return this.get();
+  }
+}
+
+// Singleton instance
+export const settingsManager = new SettingsManager();

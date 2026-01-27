@@ -1,0 +1,64 @@
+{
+  "_comment": "Copy this file to settings.json and fill in your values. Remove this _comment field.",
+
+  "setupCompleted": false,
+
+  "general": {
+    "theme": "dark",
+    "defaultProofMode": "web",
+    "logRetentionDays": 30,
+    "autoCleanupArtifacts": false
+  },
+
+  "voice": {
+    "whisperModel": "small.en",
+    "enabled": true
+  },
+
+  "notifications": {
+    "enabled": true,
+    "sound": true,
+    "jobComplete": true,
+    "jobFailed": true
+  },
+
+  "favorites": {
+    "repos": [],
+    "recentRepos": []
+  },
+
+  "github": {
+    "_comment": "Create a GitHub OAuth App at https://github.com/settings/developers",
+    "clientId": "your-github-oauth-client-id"
+  },
+
+  "gitlab": {
+    "_comment": "Create a GitLab OAuth App at https://gitlab.com/-/user_settings/applications",
+    "clientId": "your-gitlab-oauth-client-id"
+  },
+
+  "docker": {
+    "enabled": false,
+    "autoStart": false,
+    "services": {
+      "postgres": {
+        "enabled": false,
+        "port": 5432,
+        "image": "postgres",
+        "version": "16-alpine",
+        "username": "claudedesk",
+        "password": "your-secure-random-password",
+        "database": "claudedesk_dev",
+        "dataVolume": true
+      },
+      "redis": {
+        "enabled": false,
+        "port": 6379,
+        "image": "redis",
+        "version": "7-alpine",
+        "dataVolume": false
+      }
+    },
+    "networkName": "claudedesk-dev-network"
+  }
+}

@@ -1,0 +1,52 @@
+# Docker Compose Override Example
+# Copy this file to docker-compose.override.yml and customize for local development
+# This file is automatically loaded by docker-compose and overrides values in docker-compose.yml
+
+version: '3.8'
+
+services:
+  claudedesk:
+    # Use a specific image tag instead of latest
+    # image: ghcr.io/yourusername/claudedesk:v2.0.0
+
+    # Build from local Dockerfile instead of pulling from registry
+    # build:
+    #   context: ..
+    #   dockerfile: Dockerfile
+
+    # Add additional environment variables
+    # environment:
+    #   - DEBUG=true
+    #   - LOG_LEVEL=debug
+
+    # Mount local source code for development
+    # volumes:
+    #   - ../src:/app/src
+    #   - ../dist:/app/dist
+
+    # Expose additional ports
+    # ports:
+    #   - "9229:9229"  # Node.js debugger
+
+    # Override command for development
+    # command: ["npm", "run", "dev"]
+
+  postgres:
+    # Expose PostgreSQL port to host (for debugging)
+    # ports:
+    #   - "5432:5432"
+
+    # Use custom PostgreSQL configuration
+    # volumes:
+    #   - ./postgres.conf:/etc/postgresql/postgresql.conf
+    # command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+  redis:
+    # Expose Redis port to host (for debugging)
+    # ports:
+    #   - "6379:6379"
+
+    # Use custom Redis configuration
+    # command: redis-server /usr/local/etc/redis/redis.conf
+    # volumes:
+    #   - ./redis.conf:/usr/local/etc/redis/redis.conf

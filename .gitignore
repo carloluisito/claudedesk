@@ -1,0 +1,38 @@
+node_modules/
+dist/
+artifacts/
+*.log
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive configuration files (SEC-03)
+config/.secrets-key
+config/.local-token
+config/workspaces.json
+config/settings.json
+config/docker-compose.yml
+config/usage/
+
+# Runtime state files
+config/running-apps.json
+config/terminal-sessions.json
+
+# Temporary files with potential credentials
+temp/
+tmpclaude-*
+
+# Design mockups (internal only)
+mockups/
+config/repos.json

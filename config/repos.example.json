@@ -1,0 +1,128 @@
+{
+  "_comment": "Copy this file to repos.json and customize for your environment. Remove this _comment field.",
+
+  "allowedBasePaths": [
+    "./repos",
+    "/path/to/your/repositories"
+  ],
+
+  "scanPaths": [
+    "/path/to/scan/for/repos",
+    "/another/scan/path"
+  ],
+
+  "branchPrefix": "claudedesk",
+
+  "repos": [
+    {
+      "_comment": "Example: Node.js web application with API health check proof",
+      "id": "my-web-app",
+      "path": "/path/to/your/repositories/my-web-app",
+      "commands": {
+        "install": "npm install",
+        "build": "npm run build",
+        "test": "npm test",
+        "run": "npm run dev"
+      },
+      "proof": {
+        "mode": "api",
+        "api": {
+          "healthUrl": "http://localhost:3000/api/health",
+          "timeout": 30000
+        }
+      },
+      "port": 3000,
+      "tunnel": {
+        "enabled": false
+      }
+    },
+    {
+      "_comment": "Example: Frontend app with web screenshot proof",
+      "id": "my-frontend",
+      "path": "/path/to/your/repositories/my-frontend",
+      "commands": {
+        "install": "npm install",
+        "build": "npm run build",
+        "test": "npm test",
+        "run": "npm run dev"
+      },
+      "proof": {
+        "mode": "web",
+        "web": {
+          "url": "http://localhost:5173",
+          "waitForSelector": "#app",
+          "assertText": "Welcome"
+        }
+      },
+      "port": 5173
+    },
+    {
+      "_comment": "Example: CLI tool with stdout assertion proof",
+      "id": "my-cli-tool",
+      "path": "/path/to/your/repositories/my-cli-tool",
+      "commands": {
+        "install": "npm install",
+        "build": "npm run build",
+        "test": "npm test"
+      },
+      "proof": {
+        "mode": "cli",
+        "cli": {
+          "command": "node dist/cli.js --version",
+          "assertStdout": "v1.0.0",
+          "assertRegex": "^v\\d+\\.\\d+\\.\\d+$"
+        }
+      }
+    },
+    {
+      "_comment": "Example: Monorepo with multiple services",
+      "id": "my-monorepo",
+      "path": "/path/to/your/repositories/my-monorepo",
+      "commands": {
+        "install": "npm install",
+        "build": "npm run build",
+        "test": "npm test"
+      },
+      "proof": {
+        "mode": "api",
+        "api": {
+          "healthUrl": "http://localhost:3001/health",
+          "timeout": 30000
+        }
+      },
+      "isMonorepo": true,
+      "services": [
+        {
+          "id": "@myapp/frontend",
+          "name": "frontend",
+          "path": "packages/frontend",
+          "framework": "Next.js",
+          "runScript": "dev",
+          "suggestedPort": 3000,
+          "proof": {
+            "mode": "web",
+            "web": {
+              "url": "http://localhost:3000"
+            }
+          }
+        },
+        {
+          "id": "@myapp/api",
+          "name": "api",
+          "path": "packages/api",
+          "framework": "Express",
+          "runScript": "dev",
+          "suggestedPort": 3001,
+          "proof": {
+            "mode": "api",
+            "api": {
+              "healthUrl": "http://localhost:3001/health",
+              "timeout": 30000
+            }
+          }
+        }
+      ],
+      "primaryService": "@myapp/frontend"
+    }
+  ]
+}

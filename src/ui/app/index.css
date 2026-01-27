@@ -1,0 +1,450 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Default accent color (blue) - full rgb() strings for browser compatibility */
+    --accent-color: rgb(59, 130, 246);
+    --accent-color-hover: rgb(37, 99, 235);
+    /* Default font size */
+    --base-font-size: 14px;
+  }
+
+  /* Ensure dropdown options have visible text on dark backgrounds */
+  option {
+    background-color: #27272a; /* zinc-800 */
+    color: white;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    max-width: 100vw;
+    font-size: var(--base-font-size);
+  }
+
+  body {
+    @apply min-h-screen text-zinc-50;
+    background-color: #05070c;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+
+  /* Compact mode adjustments */
+  .compact .message-item {
+    @apply py-2;
+  }
+  .compact .text-sm {
+    @apply text-xs;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  /* Activity timeline highlight animation */
+  @keyframes highlight-fade {
+    0% {
+      background-color: rgba(59, 130, 246, 0.2);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .highlight-activity {
+    animation: highlight-fade 1s ease-out;
+  }
+
+  /* Shake animation for PIN entry error */
+  @keyframes shake {
+    0%, 100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-8px);
+    }
+    50% {
+      transform: translateX(8px);
+    }
+    75% {
+      transform: translateX(-8px);
+    }
+  }
+
+  .animate-shake {
+    animation: shake 0.2s ease-in-out 2;
+  }
+
+  /* Custom animations for orb */
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 0.16;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.28;
+      transform: scale(1.04);
+    }
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 1.8s ease-in-out infinite;
+  }
+
+  /* Futuristic orb animations */
+  @keyframes ring-dash {
+    0% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 100;
+    }
+  }
+
+  @keyframes orb-breathe {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.3;
+    }
+    50% {
+      transform: scale(1.03);
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes orb-listening-pulse {
+    0%, 100% {
+      transform: scale(1);
+      box-shadow: 0 0 60px 20px rgba(96, 165, 250, 0.3);
+    }
+    50% {
+      transform: scale(1.08);
+      box-shadow: 0 0 80px 30px rgba(96, 165, 250, 0.5);
+    }
+  }
+
+  @keyframes core-glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 20px 8px rgba(96, 165, 250, 0.4), 0 0 40px 16px rgba(96, 165, 250, 0.2);
+    }
+    50% {
+      box-shadow: 0 0 30px 12px rgba(96, 165, 250, 0.6), 0 0 60px 24px rgba(96, 165, 250, 0.3);
+    }
+  }
+
+  .animate-orb-breathe {
+    animation: orb-breathe 3s ease-in-out infinite;
+  }
+
+  .animate-orb-listening {
+    animation: orb-listening-pulse 1.2s ease-in-out infinite;
+  }
+
+  .animate-core-glow {
+    animation: core-glow-pulse 0.8s ease-in-out infinite;
+  }
+
+  .animate-ring-dash {
+    animation: ring-dash 3s linear infinite;
+  }
+
+  /* Plasma morphing for orb inner sphere */
+  @keyframes plasma-morph {
+    0%, 100% {
+      border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    }
+    25% {
+      border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+    }
+    50% {
+      border-radius: 50% 60% 30% 60% / 30% 60% 70% 40%;
+    }
+    75% {
+      border-radius: 60% 40% 60% 30% / 70% 30% 50% 60%;
+    }
+  }
+
+  .animate-plasma-morph {
+    animation: plasma-morph 8s ease-in-out infinite;
+  }
+
+  /* GPU acceleration hints for smooth animations */
+  .gpu-accelerated {
+    transform: translateZ(0);
+    will-change: transform, opacity;
+  }
+
+  /* Log viewer text selection */
+  .log-viewer {
+    @apply font-mono text-[11px] leading-relaxed text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap break-all;
+  }
+
+  /* Diff viewer styles */
+  .diff-add {
+    @apply text-emerald-600 dark:text-emerald-400 bg-emerald-500/10;
+  }
+  .diff-remove {
+    @apply text-red-600 dark:text-red-400 bg-red-500/10;
+  }
+  .diff-context {
+    @apply text-zinc-500 dark:text-zinc-400;
+  }
+}
+
+@layer utilities {
+  /* Safe area padding for mobile devices */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  }
+
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+  }
+
+  /* Safe area utilities for fixed headers */
+  .top-safe {
+    top: env(safe-area-inset-top, 0);
+  }
+
+  .pt-safe-header {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  /* Mobile bottom navigation spacing */
+  .pb-mobile-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4rem);
+  }
+
+  @media (min-width: 640px) {
+    .pb-mobile-nav {
+      padding-bottom: 0;
+    }
+  }
+
+  /* Snap scroll utilities */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+  }
+
+  .snap-center {
+    scroll-snap-align: center;
+  }
+
+  .snap-start {
+    scroll-snap-align: start;
+  }
+
+  /* Touch-friendly scrolling */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Touch action utilities */
+  .touch-pan-y {
+    touch-action: pan-y;
+  }
+
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
+}
+
+/* Header spacer with safe area */
+.header-spacer {
+  height: calc(56px + env(safe-area-inset-top, 0));
+}
+@media (min-width: 640px) {
+  .header-spacer {
+    height: calc(96px + env(safe-area-inset-top, 0));
+  }
+}
+
+/* Dynamic accent color utilities - placed outside layers for highest specificity */
+.bg-accent-dynamic {
+  background-color: var(--accent-color) !important;
+}
+.bg-accent-dynamic:hover {
+  background-color: var(--accent-color-hover) !important;
+}
+.text-accent-dynamic {
+  color: var(--accent-color) !important;
+}
+.border-accent-dynamic {
+  border-color: var(--accent-color) !important;
+}
+
+/* Mobile-first responsive font sizes for readability */
+@media (max-width: 640px) {
+  /* Log viewer - increase from 11px to 13px */
+  .log-viewer {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* Code blocks - increase from 12px to 14px */
+  .code-block,
+  pre code,
+  .font-mono {
+    font-size: 14px;
+  }
+
+  /* Small text - increase minimum for readability */
+  .text-xs {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  /* Extra small text adjustments */
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 12px;
+  }
+
+  /* Touch-friendly minimum heights for interactive elements */
+  button,
+  a,
+  [role="button"] {
+    min-height: 32px;
+  }
+
+  /* Larger tap targets for list items */
+  .file-list-item,
+  .session-item {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}
+
+/* Touch target utility - ensures 44x44px minimum */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Keyboard-aware input positioning */
+.keyboard-aware {
+  transition: transform 0.2s ease-out;
+}
+
+.keyboard-visible .keyboard-aware {
+  transform: translateY(var(--keyboard-offset, 0));
+}
+
+/* ================================== */
+/* MOBILE VIEW ENHANCEMENTS           */
+/* ================================== */
+
+/* Prevent iOS zoom on form inputs - font-size must be 16px+ */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Form inputs - minimum height for touch */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="number"],
+  textarea,
+  select {
+    min-height: 48px;
+  }
+
+  /* Tab buttons - minimum height for touch */
+  [role="tab"],
+  .tab-button {
+    min-height: 44px;
+  }
+
+  /* Hide scrollbar on mobile for cleaner look */
+  .mobile-hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .mobile-hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Ensure full viewport width */
+  .mobile-full-width {
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+  }
+
+  /* Bottom sheet base styles */
+  .mobile-bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top-left-radius: 1.5rem;
+    border-top-right-radius: 1.5rem;
+    max-height: 85vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* FAB positioning - account for bottom nav */
+  .mobile-fab {
+    position: fixed;
+    bottom: 5rem; /* Above bottom nav */
+    right: 1rem;
+    z-index: 40;
+  }
+}
+
+/* Tablet breakpoint (640px - 1023px) */
+@media (min-width: 640px) and (max-width: 1023px) {
+  /* Slightly larger touch targets on tablet */
+  .touch-target {
+    min-height: 40px;
+    min-width: 40px;
+  }
+}
+
+/* Desktop breakpoint (1024px+) */
+@media (min-width: 1024px) {
+  /* Standard touch targets on desktop */
+  .touch-target {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}
+
+/* Active state for touch feedback */
+@media (hover: none) and (pointer: coarse) {
+  .touch-active:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+
+  /* Disable hover effects on touch devices */
+  .no-touch-hover:hover {
+    background-color: inherit;
+  }
+}
