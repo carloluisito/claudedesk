@@ -88,7 +88,7 @@ export default function Launcher() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.4 }}
         >
-          v1.0.2
+          v1.0.3
         </motion.p>
       </div>
     </div>

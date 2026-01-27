@@ -12,6 +12,7 @@ import PreShipReview from './screens/PreShipReview';
 import Settings from './screens/Settings';
 import Workspaces from './screens/settings/Workspaces';
 import Integrations from './screens/settings/Integrations';
+import ApiConfig from './screens/settings/ApiConfig';
 import SetupWizard from './components/SetupWizard';
 import { MobileBottomNav } from './components/layout/MobileBottomNav';
 import { useAppLifecycle } from './hooks/useAppLifecycle';
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route index element={<Navigate to="/settings/workspaces" replace />} />
           <Route path="workspaces" element={<Workspaces />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="api-config" element={<ApiConfig />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

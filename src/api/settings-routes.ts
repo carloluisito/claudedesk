@@ -6,6 +6,8 @@ import { settingsManager, SettingsSchema } from '../config/settings.js';
 import { workspaceManager } from '../config/workspaces.js';
 import { GitHubDeviceAuth } from '../core/github-oauth.js';
 import { GitLabDeviceAuth } from '../core/gitlab-oauth.js';
+import { encrypt, decrypt, isEncryptedDataEmpty } from '../utils/encryption.js';
+import { getClaudeOAuthToken } from '../core/claude-usage-query.js';
 import net from 'net';
 
 export const settingsRouter = Router();
@@ -624,6 +626,219 @@ settingsRouter.get('/browse-directories', (req: Request, res: Response) => {
         currentPath: requestedPath,
         parentPath: hasParent ? parentPath : null,
         entries,
+      },
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
+// ============================================
+// Claude Token Management
+// ============================================
+
+/**
+ * GET /claude/token/status
+ * Returns current token configuration status
+ */
+settingsRouter.get('/claude/token/status', async (_req: Request, res: Response) => {
+  try {
+    const claudeTokenSettings = settingsManager.getClaudeToken();
+    const hasManualToken = !isEncryptedDataEmpty(claudeTokenSettings);
+
+    // Determine source
+    let source: 'auto' | 'manual' | 'none' = 'none';
+    let tokenPreview: string | null = null;
+
+    if (hasManualToken) {
+      source = 'manual';
+      try {
+        const decryptedToken = decrypt({
+          encryptedText: claudeTokenSettings.encryptedToken,
+          iv: claudeTokenSettings.iv,
+          tag: claudeTokenSettings.tag,
+        });
+        if (decryptedToken && decryptedToken.length > 12) {
+          tokenPreview = `${decryptedToken.substring(0, 8)}...${decryptedToken.substring(decryptedToken.length - 4)}`;
+        }
+      } catch (error) {
+        console.error('[settings-routes] Error decrypting manual token:', error);
+      }
+    } else {
+      // Check for auto-detected token
+      const autoToken = await getClaudeOAuthToken();
+      if (autoToken) {
+        source = 'auto';
+        if (autoToken.length > 12) {
+          tokenPreview = `${autoToken.substring(0, 8)}...${autoToken.substring(autoToken.length - 4)}`;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        source,
+        isValid: source !== 'none',
+        lastValidated: claudeTokenSettings.lastValidated || null,
+        tokenPreview,
+      },
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
+/**
+ * POST /claude/token/validate
+ * Validates a token by making a test API call
+ */
+settingsRouter.post('/claude/token/validate', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Token is required',
+      });
+    }
+
+    // Make a test API call to validate the token
+    try {
+      const response = await fetch('https://api.anthropic.com/api/oauth/usage', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'anthropic-beta': 'oauth-2025-04-20',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        res.json({
+          success: true,
+          data: {
+            valid: true,
+          },
+        });
+      } else if (response.status === 401) {
+        res.json({
+          success: true,
+          data: {
+            valid: false,
+            error: 'invalid_token',
+            message: 'Token is invalid or expired',
+          },
+        });
+      } else if (response.status === 403) {
+        res.json({
+          success: true,
+          data: {
+            valid: false,
+            error: 'expired',
+            message: 'Token has expired',
+          },
+        });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            valid: false,
+            error: 'network_error',
+            message: `API returned status ${response.status}`,
+          },
+        });
+      }
+    } catch (fetchError) {
+      res.json({
+        success: true,
+        data: {
+          valid: false,
+          error: 'network_error',
+          message: 'Failed to connect to Anthropic API',
+        },
+      });
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
+/**
+ * PUT /claude/token
+ * Saves a manually configured token (encrypted)
+ */
+settingsRouter.put('/claude/token', (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Token is required',
+      });
+    }
+
+    // Encrypt the token
+    const encrypted = encrypt(token);
+
+    // Save to settings
+    const now = new Date().toISOString();
+    settingsManager.updateClaudeToken({
+      encryptedToken: encrypted.encryptedText,
+      iv: encrypted.iv,
+      tag: encrypted.tag,
+      savedAt: now,
+      lastValidated: now,
+    });
+
+    // Create token preview
+    const tokenPreview = token.length > 12
+      ? `${token.substring(0, 8)}...${token.substring(token.length - 4)}`
+      : '***';
+
+    res.json({
+      success: true,
+      data: {
+        saved: true,
+        source: 'manual',
+        tokenPreview,
+      },
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
+/**
+ * DELETE /claude/token
+ * Removes the manually configured token
+ */
+settingsRouter.delete('/claude/token', async (_req: Request, res: Response) => {
+  try {
+    // Clear the manual token
+    settingsManager.updateClaudeToken({
+      encryptedToken: '',
+      iv: '',
+      tag: '',
+      savedAt: undefined,
+      lastValidated: undefined,
+    });
+
+    // Determine new source after deletion
+    const autoToken = await getClaudeOAuthToken();
+    const newSource = autoToken ? 'auto' : 'none';
+
+    res.json({
+      success: true,
+      data: {
+        deleted: true,
+        source: newSource,
       },
     });
   } catch (error) {

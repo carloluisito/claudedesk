@@ -62,6 +62,19 @@ export const SettingsSchema = z.object({
     permissionMode: z.enum(['autonomous', 'read-only']).default('autonomous'),
   }).default({}),
 
+  // Claude OAuth token (manual configuration fallback)
+  claudeToken: z.object({
+    encryptedToken: z.string().default(''),
+    iv: z.string().default(''),
+    tag: z.string().default(''),
+    savedAt: z.string().optional(),
+    lastValidated: z.string().optional(),
+  }).default({
+    encryptedToken: '',
+    iv: '',
+    tag: '',
+  }),
+
   // Voice settings
   voice: z.object({
     whisperModel: z.enum(['tiny.en', 'base.en', 'small.en', 'medium.en', 'large']).default('small.en'),
@@ -149,6 +162,11 @@ const DEFAULT_SETTINGS: Settings = {
   claude: {
     permissionMode: 'autonomous',
   },
+  claudeToken: {
+    encryptedToken: '',
+    iv: '',
+    tag: '',
+  },
   voice: {
     whisperModel: 'small.en',
     enabled: true,
@@ -233,6 +251,7 @@ export class SettingsManager {
         acknowledgedAt: parsed.acknowledgedAt,
         general: { ...DEFAULT_SETTINGS.general, ...parsed.general },
         claude: { ...DEFAULT_SETTINGS.claude, ...parsed.claude },
+        claudeToken: { ...DEFAULT_SETTINGS.claudeToken, ...parsed.claudeToken },
         voice: { ...DEFAULT_SETTINGS.voice, ...parsed.voice },
         notifications: { ...DEFAULT_SETTINGS.notifications, ...parsed.notifications },
         favorites: { ...DEFAULT_SETTINGS.favorites, ...parsed.favorites },
@@ -313,6 +332,10 @@ export class SettingsManager {
     return { ...this.settings.claude };
   }
 
+  getClaudeToken(): Settings['claudeToken'] {
+    return { ...this.settings.claudeToken };
+  }
+
   getVoice(): Settings['voice'] {
     return { ...this.settings.voice };
   }
@@ -365,6 +388,9 @@ export class SettingsManager {
     if (updates.claude) {
       this.settings.claude = { ...this.settings.claude, ...updates.claude };
     }
+    if (updates.claudeToken) {
+      this.settings.claudeToken = { ...this.settings.claudeToken, ...updates.claudeToken };
+    }
     if (updates.voice) {
       this.settings.voice = { ...this.settings.voice, ...updates.voice };
     }
@@ -414,6 +440,12 @@ export class SettingsManager {
     this.settings.claude = { ...this.settings.claude, ...updates };
     this.save();
     return this.getClaude();
+  }
+
+  updateClaudeToken(updates: Partial<Settings['claudeToken']>): Settings['claudeToken'] {
+    this.settings.claudeToken = { ...this.settings.claudeToken, ...updates };
+    this.save();
+    return this.getClaudeToken();
   }
 
   updateVoice(updates: Partial<Settings['voice']>): Settings['voice'] {

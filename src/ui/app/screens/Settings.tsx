@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Folder, Link } from 'lucide-react';
+import { Folder, Link, Key } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { AppHeader } from '../components/ui/AppHeader';
 import { BackgroundTexture } from '../components/ui/BackgroundTexture';
@@ -25,6 +25,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Integrations',
     path: '/settings/integrations',
     icon: <Link className="h-4 w-4" />,
+  },
+  {
+    id: 'api-config',
+    label: 'API Configuration',
+    path: '/settings/api-config',
+    icon: <Key className="h-4 w-4" />,
   },
 ];
 
@@ -72,12 +78,14 @@ export default function Settings() {
           >
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-white">
-                {activeTab === 'workspaces' ? 'Workspaces' : 'Integrations'}
+                {activeTab === 'workspaces' ? 'Workspaces' : activeTab === 'integrations' ? 'Integrations' : 'API Configuration'}
               </h1>
               <p className="mt-1 text-sm text-white/60">
                 {activeTab === 'workspaces'
                   ? 'Organize repositories and connect to GitHub or GitLab.'
-                  : 'Configure OAuth apps and shared Docker services.'}
+                  : activeTab === 'integrations'
+                  ? 'Configure OAuth apps and shared Docker services.'
+                  : 'Configure Claude API token for usage tracking.'}
               </p>
             </div>
           </motion.div>

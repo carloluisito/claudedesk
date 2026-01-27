@@ -2,6 +2,8 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { ClaudeUsageQuota } from '../types.js';
+import { settingsManager } from '../config/settings.js';
+import { decrypt, isEncryptedDataEmpty } from '../utils/encryption.js';
 
 /**
  * Claude Code stats cache data structure (from ~/.claude/stats-cache.json)
@@ -251,10 +253,31 @@ interface ClaudeCredentialsFile {
 /**
  * Get Claude Code OAuth token from local storage.
  *
- * Claude Code stores credentials in ~/.claude/.credentials.json
- * under the 'claudeAiOauth' key.
+ * Priority order:
+ * 1. Manual token from settings (if configured)
+ * 2. ~/.claude/.credentials.json
+ * 3. ~/.claude/credentials.json (legacy)
  */
-async function getClaudeOAuthToken(): Promise<string | null> {
+export async function getClaudeOAuthToken(): Promise<string | null> {
+  // Check for manual token in settings first
+  try {
+    const claudeTokenSettings = settingsManager.getClaudeToken();
+    if (!isEncryptedDataEmpty(claudeTokenSettings)) {
+      const decryptedToken = decrypt({
+        encryptedText: claudeTokenSettings.encryptedToken,
+        iv: claudeTokenSettings.iv,
+        tag: claudeTokenSettings.tag,
+      });
+
+      if (decryptedToken) {
+        console.log('[claude-usage-query] Using manual token from settings');
+        return decryptedToken;
+      }
+    }
+  } catch (error) {
+    console.log('[claude-usage-query] Error reading manual token:', error);
+  }
+
   // Primary location: ~/.claude/.credentials.json
   const credentialsPath = join(homedir(), '.claude', '.credentials.json');
 
@@ -299,7 +322,7 @@ async function getClaudeOAuthToken(): Promise<string | null> {
     }
   }
 
-  console.log('[claude-usage-query] No OAuth token found in', credentialsPath);
+  console.log('[claude-usage-query] No OAuth token found');
   return null;
 }
 
