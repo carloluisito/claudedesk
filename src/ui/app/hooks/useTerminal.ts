@@ -104,6 +104,10 @@ export function useTerminal() {
     setShowPreviewPanel,
     setShowStartAppModal,
     setShowMobilePreviewOverlay,
+    pendingMCPApproval,
+    approveMCPTool,
+    denyMCPTool,
+    clearMCPApproval,
   } = useTerminalStore();
 
   const { repos, token, loadData, workspaces, isLoading: isLoadingAppData } = useAppStore();
@@ -1207,6 +1211,10 @@ export function useTerminal() {
     setShowPreviewPanel,
     setShowStartAppModal,
     setShowMobilePreviewOverlay,
+    pendingMCPApproval,
+    approveMCPTool,
+    denyMCPTool,
+    clearMCPApproval,
 
     // Computed values
     activeSession,

@@ -83,6 +83,7 @@ import { ExportModal } from '../components/terminal/ExportModal';
 import { ShipModal } from '../components/terminal/ShipModal';
 import { UsageBar } from '../components/terminal/UsageBar';
 import { UsageDashboard } from '../components/terminal/UsageDashboard';
+import { ToolApprovalModal } from '../components/terminal/ToolApprovalModal';
 
 // Agents components
 import { AgentsPanel } from '../components/agents';
@@ -1479,6 +1480,33 @@ export default function Terminal() {
           onFeedback={(message) => handleSend(message)}
         />
       )}
+
+      {/* MCP Tool Approval Modal */}
+      <ToolApprovalModal
+        isOpen={!!terminal.pendingMCPApproval}
+        toolName={terminal.pendingMCPApproval?.toolName || ''}
+        serverName={terminal.pendingMCPApproval?.serverName || ''}
+        description={terminal.pendingMCPApproval?.description}
+        inputParameters={terminal.pendingMCPApproval?.inputParameters || {}}
+        onApprove={async (autoApproveSession) => {
+          if (terminal.pendingMCPApproval) {
+            try {
+              await terminal.approveMCPTool(terminal.pendingMCPApproval.approvalId, autoApproveSession);
+            } catch (err) {
+              console.error('Failed to approve MCP tool:', err);
+            }
+          }
+        }}
+        onDeny={async () => {
+          if (terminal.pendingMCPApproval) {
+            try {
+              await terminal.denyMCPTool(terminal.pendingMCPApproval.approvalId);
+            } catch (err) {
+              console.error('Failed to deny MCP tool:', err);
+            }
+          }
+        }}
+      />
 
       {/* Repo Switcher Modal */}
       {showRepoSwitcher && activeSession && (

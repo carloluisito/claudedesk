@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2026-01-28
+
+### Added
+
+#### MCP Server Integration
+- Full Model Context Protocol (MCP) support for connecting Claude to external tools
+- MCP server configuration management (add, edit, delete, enable/disable)
+- Support for two transport types: stdio (command-based) and SSE (HTTP-based)
+- Automatic tool discovery from connected MCP servers
+- Connection status tracking with real-time updates
+
+#### MCP Server Catalog
+- Built-in catalog of 15 pre-configured MCP servers
+- Catalog browser with category filtering and search
+- Server detail sheets with prerequisites and configuration requirements
+- 4-step setup wizard for guided server configuration
+- Platform-specific prerequisite detection (Windows, macOS, Linux)
+
+#### Catalog Servers Included
+- **Development**: GitHub, GitLab
+- **Database**: PostgreSQL, MySQL, SQLite, Redis, MongoDB
+- **Communication**: Slack
+- **Productivity**: Notion, Linear
+- **Design**: Figma
+- **Monitoring**: Sentry
+- **Automation**: Puppeteer
+- **Utilities**: Filesystem, Memory
+
+#### MCP API Endpoints
+- `GET /api/mcp/servers` - List all configured servers
+- `POST /api/mcp/servers` - Create new server
+- `PUT /api/mcp/servers/:id` - Update server configuration
+- `DELETE /api/mcp/servers/:id` - Delete server
+- `GET /api/mcp/servers/:id/status` - Get connection status
+- `POST /api/mcp/servers/:id/connect` - Connect to server
+- `POST /api/mcp/servers/:id/disconnect` - Disconnect from server
+- `GET /api/mcp/tools` - List all available tools
+- `GET /api/mcp/settings` - Get global MCP settings
+- `PUT /api/mcp/settings` - Update MCP settings
+- `GET /api/mcp/catalog` - Get predefined server templates
+
+### Fixed
+- Terminal session preservation across app restarts
+
 ## [1.0.9] - 2025-01-28
 
 ### Added
@@ -60,5 +104,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy for vulnerability reporting
 - ARCHITECTURE overview
 
+[1.0.10]: https://github.com/carloluisito/claudedesk/releases/tag/v1.0.10
 [1.0.9]: https://github.com/carloluisito/claudedesk/releases/tag/v1.0.9
 [1.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v1.0.0

@@ -55,6 +55,76 @@ It is not an IDE. It is not a replacement for Claude Code. It is a session manag
 - **Message Queue** - Queue up to 10 messages while Claude is working, with queue manager to preview, reorder, and remove pending prompts
 - **Stop/Cancel** - Stop Claude mid-generation with Escape key or Stop button; partial responses are preserved with cancellation marker
 - **Queue Resume Controls** - After stopping, choose to resume queue processing or clear all pending messages
+- **MCP Server Integration** - Connect Claude to external tools via Model Context Protocol (GitHub, PostgreSQL, Slack, and more)
+
+## MCP Server Integration
+
+ClaudeDesk supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), allowing Claude to interact with external tools and services.
+
+### What is MCP?
+
+MCP is an open protocol that enables AI assistants to securely connect to external data sources and tools. With MCP servers, Claude can:
+- Query databases directly
+- Interact with GitHub repositories and issues
+- Send Slack messages
+- Access file systems
+- And much more
+
+### Quick Start
+
+1. Go to **Settings > MCP Servers**
+2. Click **Browse Catalog** to see available servers
+3. Select a server (e.g., GitHub, PostgreSQL)
+4. Follow the setup wizard to configure credentials
+5. The server connects automatically when enabled
+
+### Supported Transports
+
+| Transport | Description | Use Case |
+|-----------|-------------|----------|
+| **stdio** | Command-based, runs locally | Local tools, databases, file access |
+| **SSE** | HTTP-based, can be remote | Remote services, cloud APIs |
+
+### Catalog Servers
+
+ClaudeDesk includes a catalog of 15 pre-configured MCP servers:
+
+| Server | Category | Description |
+|--------|----------|-------------|
+| GitHub | Development | Repository management, issues, PRs |
+| GitLab | Development | GitLab API integration |
+| PostgreSQL | Database | Direct SQL queries |
+| MySQL | Database | MySQL database access |
+| SQLite | Database | Local SQLite databases |
+| Redis | Database | Redis key-value operations |
+| MongoDB | Database | MongoDB document queries |
+| Slack | Communication | Send/receive Slack messages |
+| Notion | Productivity | Notion pages and databases |
+| Linear | Productivity | Issue tracking and project management |
+| Figma | Design | Design file access and inspection |
+| Sentry | Monitoring | Error tracking and debugging |
+| Puppeteer | Automation | Browser automation and screenshots |
+| Filesystem | Utilities | Extended file system access |
+| Memory | Utilities | Persistent memory across sessions |
+
+### Manual Server Configuration
+
+For servers not in the catalog:
+
+1. Click **Add Server** in Settings > MCP Servers
+2. Enter server details:
+   - **Name**: Display name
+   - **Transport**: stdio or SSE
+   - **Command** (stdio): The command to run (e.g., `npx @modelcontextprotocol/server-github`)
+   - **URL** (SSE): The server endpoint URL
+   - **Environment Variables**: API keys and credentials
+
+### Security Considerations
+
+- API keys and tokens are stored encrypted locally
+- Each server runs in isolation
+- Tool calls require explicit approval (configurable)
+- Servers can be enabled/disabled without deletion
 
 ## Keyboard Shortcuts
 
@@ -78,6 +148,10 @@ npx claudedesk
 ```
 
 **Prerequisites:** Node.js 18+ and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)
+
+**For MCP Servers:** Some MCP servers require additional tools:
+- `npx` (included with npm 5.2+) - Required for most catalog servers
+- `uvx` (from [uv](https://github.com/astral-sh/uv)) - Required for Python-based MCP servers
 
 ### Option 2: Docker
 
@@ -381,6 +455,135 @@ Response:
 }
 ```
 
+### MCP Server Endpoints
+
+These endpoints manage MCP server configuration and connections.
+
+#### List Servers
+
+**GET `/api/mcp/servers`**
+
+Returns all configured MCP servers.
+
+```json
+[
+  {
+    "id": "github-1",
+    "name": "GitHub",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_TOKEN": "***" },
+    "enabled": true,
+    "autoConnect": true,
+    "createdAt": "2026-01-28T12:00:00.000Z"
+  }
+]
+```
+
+#### Create Server
+
+**POST `/api/mcp/servers`**
+
+Creates a new MCP server configuration.
+
+Request body:
+```json
+{
+  "name": "GitHub",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "env": { "GITHUB_TOKEN": "ghp_xxx" },
+  "enabled": true,
+  "autoConnect": true
+}
+```
+
+#### Update Server
+
+**PUT `/api/mcp/servers/:id`**
+
+Updates an existing server configuration.
+
+#### Delete Server
+
+**DELETE `/api/mcp/servers/:id`**
+
+Removes a server configuration.
+
+#### Get Server Status
+
+**GET `/api/mcp/servers/:id/status`**
+
+Returns the connection status and available tools.
+
+```json
+{
+  "id": "github-1",
+  "status": "connected",
+  "tools": [
+    { "name": "github_create_issue", "description": "Create a GitHub issue" },
+    { "name": "github_list_repos", "description": "List repositories" }
+  ],
+  "connectedAt": "2026-01-28T12:00:00.000Z"
+}
+```
+
+#### Connect Server
+
+**POST `/api/mcp/servers/:id/connect`**
+
+Establishes connection to an MCP server.
+
+#### Disconnect Server
+
+**POST `/api/mcp/servers/:id/disconnect`**
+
+Disconnects from an MCP server.
+
+#### List All Tools
+
+**GET `/api/mcp/tools`**
+
+Returns tools from all connected MCP servers.
+
+```json
+[
+  {
+    "serverId": "github-1",
+    "serverName": "GitHub",
+    "name": "github_create_issue",
+    "description": "Create a GitHub issue"
+  }
+]
+```
+
+#### Get MCP Settings
+
+**GET `/api/mcp/settings`**
+
+Returns global MCP settings.
+
+```json
+{
+  "autoConnectEnabled": true,
+  "toolApprovalRequired": true
+}
+```
+
+#### Update MCP Settings
+
+**PUT `/api/mcp/settings`**
+
+Updates global MCP settings.
+
+#### Get Catalog
+
+**GET `/api/mcp/catalog`**
+
+Returns the list of pre-configured server templates.
+
 For complete API documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Troubleshooting
@@ -456,10 +659,14 @@ claudedesk --data-dir /path/to/restored/data
 
 ```
 src/
-  api/           # Express routes
+  api/           # Express routes (including mcp-routes.ts)
   core/          # Claude invoker, git operations, session management
+                 # MCP: mcp-client.ts, mcp-manager.ts
   config/        # Settings, workspaces, skills
+                 # MCP: mcp-servers.ts (registry), mcp-catalog.ts (templates)
   ui/app/        # React frontend
+    components/settings/  # MCP: MCPServersPanel, CatalogBrowserModal, SetupWizardModal
+    hooks/                # MCP: useMCPServers, useMCPCatalog
 config/
   repos.json     # Repository configuration (example)
   skills/        # Custom skill definitions

@@ -461,3 +461,108 @@ export interface ClaudeUsageQuota {
   seven_day: ClaudeQuotaBucket;
   lastUpdated: string;
 }
+
+// =============================================================================
+// MCP (Model Context Protocol) Types
+// =============================================================================
+
+// MCP server configuration
+export const MCPServerConfigSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  transport: z.enum(['stdio', 'sse']),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  url: z.string().optional(),
+  env: z.record(z.string()).optional(),
+  enabled: z.boolean().default(true),
+  autoConnect: z.boolean().default(true),
+  createdAt: z.string(),
+  updatedAt: z.string().optional(),
+});
+
+export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>;
+
+// MCP server status
+export type MCPConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+
+export interface MCPServerStatus {
+  id: string;
+  status: MCPConnectionStatus;
+  error?: string;
+  tools?: MCPToolDefinition[];
+  connectedAt?: string;
+  lastError?: string;
+  lastErrorAt?: string;
+}
+
+// MCP tool definition (from MCP protocol)
+export interface MCPToolDefinition {
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>; // JSON Schema
+}
+
+// MCP tool result content
+export interface MCPToolResultContent {
+  type: 'text' | 'image' | 'resource';
+  text?: string;
+  data?: string;       // Base64 for images
+  mimeType?: string;
+  uri?: string;
+}
+
+// MCP Server Catalog Types
+export type ServerCategory = 'development' | 'productivity' | 'data' | 'filesystem' | 'search' | 'cloud' | 'automation' | 'utilities';
+
+export type MaintainerType = 'official' | 'community' | 'verified';
+
+export interface ConfigField {
+  key: string;                  // "GITHUB_PERSONAL_ACCESS_TOKEN"
+  name: string;                 // "Personal Access Token"
+  description: string;
+  type: 'string' | 'password' | 'path' | 'url' | 'number' | 'boolean' | 'select';
+  required: boolean;
+  placeholder?: string;
+  helpUrl?: string;
+  sensitive: boolean;
+  default?: string;
+  validation?: {
+    pattern?: string;
+    message?: string;
+  };
+  options?: string[];           // For select type
+}
+
+export interface Prerequisite {
+  name: string;                 // "Node.js"
+  command: string;              // "node"
+  args: string[];               // ["--version"]
+  installUrl: Record<string, string>; // { windows: "...", darwin: "...", linux: "..." }
+}
+
+export interface PredefinedServerTemplate {
+  templateId: string;           // "github"
+  name: string;                 // "GitHub"
+  description: string;          // Short description
+  longDescription?: string;     // Extended description
+  iconName: string;             // Lucide icon name
+  category: ServerCategory;
+  tags: string[];               // ["version-control", "git"]
+  maintainer: MaintainerType;
+  documentationUrl?: string;
+  transport: 'stdio' | 'sse';
+  command: string;              // "npx"
+  args: string[];               // ["-y", "@modelcontextprotocol/server-github"]
+  configFields: ConfigField[];
+  prerequisites: Prerequisite[];
+  platforms: ('windows' | 'darwin' | 'linux')[];
+}
+
+export interface PrerequisiteCheckResult {
+  prerequisite: Prerequisite;
+  installed: boolean;
+  version?: string;
+  error?: string;
+}

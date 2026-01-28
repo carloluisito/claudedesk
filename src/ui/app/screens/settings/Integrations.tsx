@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, useReducedMotion, AnimatePresence } from 'framer-motion';
-import { Github, Gitlab, Container, Check, ExternalLink, ChevronDown, Play, Square, Loader2, Copy, Database, Server, AlertTriangle, RefreshCw, ChevronUp, Bot, ShieldCheck, X, Globe } from 'lucide-react';
+import { Github, Gitlab, Container, Check, ExternalLink, ChevronDown, Play, Square, Loader2, Copy, Database, Server, AlertTriangle, RefreshCw, ChevronUp, Bot, ShieldCheck, X, Globe, Puzzle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useToast } from '../../hooks/useToast';
 import { RemoteAccess } from './RemoteAccess';
+import { MCPServersPanel } from '../../components/settings/MCPServersPanel';
 import type { GitHubSettings, GitLabSettings } from '../../types';
 
 interface DockerService {
@@ -938,6 +939,9 @@ export default function Integrations() {
       >
         <RemoteAccess />
       </CollapsibleSection>
+
+      {/* MCP Servers Section */}
+      <MCPServersPanel defaultOpen={false} />
 
       {/* CLAUDE BEHAVIOR Category */}
       <CategoryDivider label="Claude Behavior" />

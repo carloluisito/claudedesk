@@ -29,6 +29,7 @@ import { terminalSessionManager } from './core/terminal-session.js';
 import { tunnelManager } from './core/tunnel-manager.js';
 import { appManager } from './core/app-manager.js';
 import { remoteTunnelManager } from './core/remote-tunnel-manager.js';
+import { mcpManager } from './core/mcp-manager.js';
 
 export interface StartServerOptions {
   port?: number;
@@ -132,6 +133,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
         dockerStatus = 'Docker: enabled (manual start)';
       }
 
+      // Initialize MCP manager (auto-connects to enabled servers)
+      mcpManager.initialize()
+        .then(() => {
+          console.log('[MCP] Manager initialized');
+        })
+        .catch((err) => {
+          console.warn('[MCP] Failed to initialize:', err.message);
+        });
+
       // Auto-start remote tunnel if enabled
       const tunnelSettings = settingsManager.getTunnel();
       let tunnelStatus = 'Tunnel: disabled';
@@ -232,7 +242,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
         console.warn('[Shutdown] Failed to stop tunnel:', err);
       }
 
-      // 7. Close HTTP server
+      // 7. Shutdown MCP manager
+      console.log('[Shutdown] Disconnecting MCP servers...');
+      try {
+        await mcpManager.shutdown();
+      } catch (err) {
+        console.warn('[Shutdown] Failed to shutdown MCP:', err);
+      }
+
+      // 8. Close HTTP server
       console.log('[Shutdown] Closing HTTP server...');
       server.close();
 

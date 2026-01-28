@@ -52,6 +52,12 @@ export interface ToolActivity {
   timestamp: Date;
   completedAt?: Date;      // When the tool completed
   error?: string;          // Error message if status is 'error'
+  // MCP tool properties
+  isMCPTool?: boolean;     // Whether this is an MCP tool
+  mcpServerName?: string;  // Name of the MCP server
+  mcpToolDescription?: string; // Tool description from MCP
+  mcpInput?: Record<string, unknown>; // Tool input parameters
+  mcpOutput?: string;      // Tool output/result
 }
 
 export interface GitStatus {
@@ -108,6 +114,17 @@ export interface QueuedMessage {
   queuedAt: Date;
 }
 
+// MCP tool approval request
+export interface MCPToolApprovalRequest {
+  sessionId: string;
+  approvalId: string;
+  toolName: string;
+  serverName: string;
+  serverId: string;
+  description?: string;
+  inputParameters: Record<string, unknown>;
+}
+
 export interface TerminalSession {
   id: string;
   repoIds: string[];              // Array of repo IDs (first = primary)
@@ -152,6 +169,9 @@ interface TerminalStore {
   searchResults: SearchResult[];
   isSearching: boolean;
   isLoadingSessions: boolean; // Guard against duplicate loadSessions calls
+
+  // MCP tool approval
+  pendingMCPApproval: MCPToolApprovalRequest | null;
 
   // Preview panel state
   showPreviewPanel: boolean;
@@ -201,6 +221,11 @@ interface TerminalStore {
   setShowStartAppModal: (show: boolean) => void;
   setShowMobilePreviewOverlay: (show: boolean) => void;
 
+  // MCP tool approval
+  approveMCPTool: (approvalId: string, autoApproveSession: boolean) => Promise<void>;
+  denyMCPTool: (approvalId: string) => Promise<void>;
+  clearMCPApproval: () => void;
+
   // WebSocket
   connect: (token: string) => void;
   disconnect: () => void;
@@ -243,6 +268,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   searchResults: [],
   isSearching: false,
   isLoadingSessions: false,
+  pendingMCPApproval: null,
 
   // Preview panel state
   showPreviewPanel: false,
@@ -832,6 +858,23 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
               get().updateSession(sessionId, { status: 'error' });
             }
             break;
+
+          case 'mcp-tool-approval-needed':
+            // MCP tool approval request
+            if (sessionId && message.approvalId) {
+              set((state) => ({
+                pendingMCPApproval: {
+                  sessionId,
+                  approvalId: message.approvalId,
+                  toolName: message.toolName,
+                  serverName: message.serverName,
+                  serverId: message.serverId,
+                  description: message.description,
+                  inputParameters: message.inputParameters || {},
+                },
+              }));
+            }
+            break;
         }
       } catch (error) {
         console.error('[Terminal] Failed to parse message:', error);
@@ -1206,4 +1249,27 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   setShowPreviewPanel: (show: boolean) => set({ showPreviewPanel: show }),
   setShowStartAppModal: (show: boolean) => set({ showStartAppModal: show }),
   setShowMobilePreviewOverlay: (show: boolean) => set({ showMobilePreviewOverlay: show }),
+
+  // MCP tool approval
+  approveMCPTool: async (approvalId: string, autoApproveSession: boolean) => {
+    try {
+      await api('POST', `/mcp/approve/${approvalId}`, { autoApproveSession });
+      set({ pendingMCPApproval: null });
+    } catch (error) {
+      console.error('[Terminal] Failed to approve MCP tool:', error);
+      throw error;
+    }
+  },
+
+  denyMCPTool: async (approvalId: string) => {
+    try {
+      await api('POST', `/mcp/deny/${approvalId}`);
+      set({ pendingMCPApproval: null });
+    } catch (error) {
+      console.error('[Terminal] Failed to deny MCP tool:', error);
+      throw error;
+    }
+  },
+
+  clearMCPApproval: () => set({ pendingMCPApproval: null }),
 }));

@@ -16,6 +16,7 @@ import { dockerRouter } from './docker-routes.js';
 import { skillRouter } from './skill-routes.js';
 import { agentRouter } from './agent-routes.js';
 import { tunnelRouter } from './tunnel-routes.js';
+import { mcpRouter } from './mcp-routes.js';
 import { pinAuthManager } from './pin-auth.js';
 import { getAuthToken } from './middleware.js';
 
@@ -537,3 +538,6 @@ apiRouter.use('/agents', agentRouter);
 
 // Mount tunnel router for remote access
 apiRouter.use('/tunnel', tunnelRouter);
+
+// Mount MCP router for Model Context Protocol integration
+apiRouter.use('/mcp', mcpRouter);

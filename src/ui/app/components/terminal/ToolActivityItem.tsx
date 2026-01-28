@@ -15,6 +15,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Puzzle,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { ToolActivity } from '../../store/terminalStore';
@@ -32,15 +33,33 @@ const TOOL_CONFIG: Record<string, { icon: typeof FileText; color: string; bg: st
   WebSearch: { icon: Globe, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
   Task: { icon: Bot, color: 'text-blue-400', bg: 'bg-blue-500/10' },
   TodoWrite: { icon: ListTodo, color: 'text-lime-400', bg: 'bg-lime-500/10' },
+  MCP: { icon: Puzzle, color: 'text-purple-400', bg: 'bg-purple-500/10' },
 };
 
 const DEFAULT_CONFIG = { icon: CircleDot, color: 'text-white/50', bg: 'bg-white/5' };
 
 // Format human-readable descriptions based on tool, target, and status
-function formatDescription(tool: string, target: string, status: 'running' | 'complete' | 'error'): string {
+function formatDescription(
+  tool: string,
+  target: string,
+  status: 'running' | 'complete' | 'error',
+  isMCPTool?: boolean,
+  mcpServerName?: string,
+  mcpToolDescription?: string
+): string {
   // SEC-03: Sanitize target before display
   const sanitizedTarget = sanitizeSensitiveData(target);
   const isRunning = status === 'running';
+
+  // Handle MCP tools
+  if (isMCPTool && mcpServerName) {
+    const toolName = tool || 'Unknown Tool';
+    const via = ` via ${mcpServerName}`;
+    if (mcpToolDescription) {
+      return isRunning ? `${toolName}${via}...` : `${toolName}${via}`;
+    }
+    return isRunning ? `${toolName}${via}...` : `${toolName}${via}`;
+  }
 
   switch (tool) {
     case 'Read':
@@ -100,8 +119,14 @@ interface ToolActivityItemProps {
 
 export const ToolActivityItem = memo(function ToolActivityItem({ activity, isNested = false }: ToolActivityItemProps) {
   const [showOutput, setShowOutput] = useState(activity.status === 'error'); // Auto-expand errors
+  const [showInput, setShowInput] = useState(false);
+  const [showMCPOutput, setShowMCPOutput] = useState(false);
   const [copied, setCopied] = useState(false);
-  const config = TOOL_CONFIG[activity.tool] || DEFAULT_CONFIG;
+  const [copiedInput, setCopiedInput] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
+
+  // Use MCP config if it's an MCP tool
+  const config = activity.isMCPTool ? TOOL_CONFIG['MCP'] : (TOOL_CONFIG[activity.tool] || DEFAULT_CONFIG);
   const Icon = config.icon;
 
   const handleCopyError = async () => {
@@ -110,6 +135,30 @@ export const ToolActivityItem = memo(function ToolActivityItem({ activity, isNes
         await navigator.clipboard.writeText(activity.error);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
+
+  const handleCopyInput = async () => {
+    if (activity.mcpInput) {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(activity.mcpInput, null, 2));
+        setCopiedInput(true);
+        setTimeout(() => setCopiedInput(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
+
+  const handleCopyOutput = async () => {
+    if (activity.mcpOutput) {
+      try {
+        await navigator.clipboard.writeText(activity.mcpOutput);
+        setCopiedOutput(true);
+        setTimeout(() => setCopiedOutput(false), 2000);
       } catch (err) {
         console.error('Failed to copy:', err);
       }
@@ -147,9 +196,16 @@ export const ToolActivityItem = memo(function ToolActivityItem({ activity, isNes
                 ? 'text-white/50'
                 : 'text-white/80'
           )}
-          title={activity.target || activity.tool}
+          title={activity.mcpToolDescription || activity.target || activity.tool}
         >
-          {formatDescription(activity.tool, activity.target, activity.status)}
+          {formatDescription(
+            activity.tool,
+            activity.target,
+            activity.status,
+            activity.isMCPTool,
+            activity.mcpServerName,
+            activity.mcpToolDescription
+          )}
         </span>
 
         {/* Duration for completed activities */}
@@ -159,15 +215,23 @@ export const ToolActivityItem = memo(function ToolActivityItem({ activity, isNes
           </span>
         )}
 
-        {/* Expand button for output (if we have it) */}
-        {activity.error && (
+        {/* Expand button for details (error, input, or output) */}
+        {(activity.error || (activity.isMCPTool && (activity.mcpInput || activity.mcpOutput))) && (
           <button
-            onClick={() => setShowOutput(!showOutput)}
+            onClick={() => {
+              if (activity.error) {
+                setShowOutput(!showOutput);
+              } else if (activity.mcpInput) {
+                setShowInput(!showInput);
+              } else if (activity.mcpOutput) {
+                setShowMCPOutput(!showMCPOutput);
+              }
+            }}
             className="ml-auto p-0.5 hover:bg-white/10 rounded-lg transition-colors"
           >
             <ChevronDown className={cn(
               'h-3 w-3 text-white/40 transition-transform',
-              showOutput && 'rotate-180'
+              (showOutput || showInput || showMCPOutput) && 'rotate-180'
             )} />
           </button>
         )}
@@ -202,6 +266,71 @@ export const ToolActivityItem = memo(function ToolActivityItem({ activity, isNes
           <p className="text-[10px] text-white/40">
             Tip: You can ask Claude to retry this operation or investigate the error.
           </p>
+        </div>
+      )}
+
+      {/* Expandable MCP input section */}
+      {showInput && activity.isMCPTool && activity.mcpInput && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <Puzzle className="h-3 w-3 text-purple-400" />
+            <span className="text-purple-300 font-medium">Tool Input</span>
+            <button
+              onClick={handleCopyInput}
+              className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-[10px] ring-1 ring-white/10 transition-colors"
+            >
+              {copiedInput ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-400" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  Copy input
+                </>
+              )}
+            </button>
+          </div>
+          <pre className="text-xs bg-black/30 rounded-xl p-2.5 max-h-48 overflow-auto text-purple-300 ring-1 ring-purple-500/20 font-mono">
+            {JSON.stringify(activity.mcpInput, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* Expandable MCP output section */}
+      {showMCPOutput && activity.isMCPTool && activity.mcpOutput && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <Puzzle className="h-3 w-3 text-purple-400" />
+            <span className="text-purple-300 font-medium">Tool Output</span>
+            <button
+              onClick={handleCopyOutput}
+              className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-[10px] ring-1 ring-white/10 transition-colors"
+            >
+              {copiedOutput ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-400" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  Copy output
+                </>
+              )}
+            </button>
+          </div>
+          <pre className="text-xs bg-black/30 rounded-xl p-2.5 max-h-48 overflow-auto text-white/70 ring-1 ring-white/10 font-mono whitespace-pre-wrap">
+            {activity.mcpOutput}
+          </pre>
+        </div>
+      )}
+
+      {/* Tool description for MCP tools */}
+      {activity.isMCPTool && activity.mcpToolDescription && (showInput || showMCPOutput) && (
+        <div className="mt-2 text-[10px] text-white/40 italic">
+          {activity.mcpToolDescription}
         </div>
       )}
     </div>

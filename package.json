@@ -66,6 +66,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "@types/glob": "^8.1.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "clsx": "^2.1.1",

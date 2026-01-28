@@ -1,6 +1,7 @@
 import { Search, Command, SplitSquareVertical, Plus } from 'lucide-react';
 import { AppHeader, HeaderButton } from '@/components/ui/AppHeader';
 import { QuotaChip } from '../../ui/QuotaChip';
+import { MCPStatusIndicator } from '../MCPStatusIndicator';
 
 interface TopBarProps {
   onNewSession: () => void;
@@ -49,6 +50,8 @@ export function TopBar({
               isHourly={false}
             />
           </div>
+          {/* MCP Status Indicator */}
+          <MCPStatusIndicator />
           {/* Search, Commands, Split - hidden on mobile */}
           <div className="hidden sm:flex items-center gap-2">
             <HeaderButton

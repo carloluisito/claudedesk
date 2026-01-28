@@ -149,6 +149,19 @@ export const SettingsSchema = z.object({
     tokenCreatedAt: z.string().optional(),
     lastTunnelUrl: z.string().optional(),
   }).default({ enabled: false, autoStart: false }),
+
+  // MCP (Model Context Protocol) settings
+  mcp: z.object({
+    globalEnabled: z.boolean().default(true),
+    toolApprovalMode: z.enum(['auto', 'ask']).default('auto'),
+    connectionTimeout: z.number().default(30000),
+    toolTimeout: z.number().default(60000),
+  }).default({
+    globalEnabled: true,
+    toolApprovalMode: 'auto',
+    connectionTimeout: 30000,
+    toolTimeout: 60000,
+  }),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -219,6 +232,12 @@ const DEFAULT_SETTINGS: Settings = {
     enabled: false,
     autoStart: false,
   },
+  mcp: {
+    globalEnabled: true,
+    toolApprovalMode: 'auto',
+    connectionTimeout: 30000,
+    toolTimeout: 60000,
+  },
 };
 
 export class SettingsManager {
@@ -276,6 +295,7 @@ export class SettingsManager {
           },
         },
         tunnel: { ...DEFAULT_SETTINGS.tunnel, ...parsed.tunnel },
+        mcp: { ...DEFAULT_SETTINGS.mcp, ...parsed.mcp },
       });
 
       // Save if password was migrated
@@ -375,6 +395,10 @@ export class SettingsManager {
     return { ...this.settings.tunnel };
   }
 
+  getMcp(): Settings['mcp'] {
+    return { ...this.settings.mcp };
+  }
+
   isSetupCompleted(): boolean {
     return this.settings.setupCompleted;
   }
@@ -428,6 +452,9 @@ export class SettingsManager {
     }
     if (updates.tunnel) {
       this.settings.tunnel = { ...this.settings.tunnel, ...updates.tunnel };
+    }
+    if (updates.mcp) {
+      this.settings.mcp = { ...this.settings.mcp, ...updates.mcp };
     }
 
     // Validate the merged settings
@@ -496,6 +523,12 @@ export class SettingsManager {
     this.settings.tunnel = { ...this.settings.tunnel, ...updates };
     this.save();
     return this.getTunnel();
+  }
+
+  updateMcp(updates: Partial<Settings['mcp']>): Settings['mcp'] {
+    this.settings.mcp = { ...this.settings.mcp, ...updates };
+    this.save();
+    return this.getMcp();
   }
 
   setSetupCompleted(completed: boolean): void {
