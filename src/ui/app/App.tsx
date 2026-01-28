@@ -3,12 +3,12 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { useAppStore } from './store/appStore';
 import { api } from './lib/api';
 import { requestCache, CACHE_KEYS } from './lib/request-cache';
-import Auth from './screens/Auth';
+import Auth from './screens/AuthV2';
 import Home from './screens/Home';
-import Terminal from './screens/Terminal';
+import Terminal from './screens/TerminalV2';
 import RunPage from './screens/RunPage';
-import ReviewChanges from './screens/ReviewChanges';
-import PreShipReview from './screens/PreShipReview';
+import ReviewChanges from './screens/ReviewChangesV2';
+import PreShipReview from './screens/PreShipReviewV2';
 import Settings from './screens/Settings';
 import Workspaces from './screens/settings/Workspaces';
 import Integrations from './screens/settings/Integrations';

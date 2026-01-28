@@ -5,6 +5,92 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-01-28
+
+### Fixed
+
+#### Remote Tunnel Access in Development Mode
+- Fixed tunnel access showing "UI not built" error when running in dev mode
+- HTTP requests now proxy to Vite dev server (port 5173) when client is not built
+- WebSocket upgrade requests proxy to Vite for HMR (Hot Module Replacement) support via tunnel
+- Added helpful error page when Vite dev server is not running, with clear instructions
+- New `setUpgradeFallback()` method in ws-manager for WebSocket proxy routing
+
+### Technical Details
+- `src/index.ts`: Added `hasBuiltClient` detection and Vite proxy fallback (lines 85-193)
+- `src/core/ws-manager.ts`: Added `setUpgradeFallback()` for non-`/ws` WebSocket handling
+
+## [2.0.0] - 2026-01-28
+
+### Major Redesign
+
+Complete UI/UX redesign focused on reducing modal fatigue, improving code maintainability, and enhancing the review/ship workflow.
+
+### Added
+
+#### Unified Design System
+- New design system at `src/ui/app/design-system/` with consistent tokens, primitives, and patterns
+- **Tokens**: Semantic color palette (`colors.ts`), spacing scale (`spacing.ts`), typography (`typography.ts`)
+- **Primitives**: `Surface` (glassmorphism cards), `Stack` (flex layouts), `Text` (typography component)
+- **Compounds**: `Panel` (expandable sections), `Drawer` (side panels), `Stepper` (multi-step flows), `InlineForm`
+- **Patterns**: `CommandBar` (unified command input), `StatusStrip` (mobile bottom bar)
+
+#### Terminal UI Store (`terminalUIStore.ts`)
+- Centralized overlay management replacing 30+ individual modal states
+- Single `activeOverlay` state: `'none' | 'command-palette' | 'settings' | 'export' | 'agents' | 'mcp-approval'`
+- Expandable panels management for Activity, Changes, Queue
+- Mobile sheet state for responsive bottom sheets
+- Context menu, jump menu, and message search state management
+
+#### TerminalV2 - Modular Architecture
+- Refactored from 1668 lines to ~300 lines with modular components
+- `TerminalLayout.tsx` - Responsive grid/layout structure
+- `ConversationArea.tsx` - Messages, composer, search bar
+- `SidebarArea.tsx` - Activity feed, changes drawer
+- `MobileStatusStrip.tsx` - Mobile bottom bar replacing FAB
+- `OverlayManager.tsx` - Renders active overlay based on store state
+
+#### AuthV2 - Stepper Flow
+- Single-page stepper pattern with visual progress indicator (1-2-3 dots)
+- `AuthStepper.tsx` - Orchestrates the authentication flow
+- `AuthMethodPicker.tsx` - Token vs PIN selection with card-style options
+- `TokenAuthForm.tsx` - Token input with show/hide toggle
+- `PinAuthForm.tsx` - PIN entry component
+- `PWAInstallPrompt.tsx` - Non-blocking PWA install prompt after auth
+- `AuthSuccess.tsx` - Success state with animation before redirect
+
+#### ReviewV2 - Enhanced Diff Viewer
+- `DiffViewerV2.tsx` - Shiki-powered syntax highlighting for 40+ languages
+- `FileTree.tsx` - Collapsible directory tree with approval workflow
+- `ReviewLayout.tsx` - Responsive 3-column layout (File List | Diff | Summary)
+- `ApprovalSummary.tsx` - Approval progress tracking with quick actions
+- Toggle between unified and side-by-side diff views
+- Line numbers with proper old/new alignment
+
+#### PreShipV2 - Enhanced Safety Workflow
+- `SafetyChecklist.tsx` - Warning severity system (critical/warning/info)
+- `BranchCompare.tsx` - Visual source→target branch display with ahead/behind counts
+- `PRPreview.tsx` - Live PR preview with edit/preview toggle and AI generation
+- Expandable warning details with affected files and code snippets
+- Blocking warnings prevent shipping until resolved
+
+#### Settings Redesign
+- `SettingsLayout.tsx` - Tabbed navigation replacing collapsible sections
+- Tabs: Source Control | Services | Remote Access | MCP Servers | Claude Behavior
+
+### Changed
+
+- App.tsx now imports V2 screens (AuthV2, TerminalV2, ReviewChangesV2, PreShipReviewV2)
+- Mobile navigation uses StatusStrip pattern instead of FAB (Floating Action Button)
+- Overlay management centralized in Zustand store instead of scattered useState hooks
+
+### Technical Details
+
+- Installed `shiki` for syntax highlighting in diff viewer
+- Design system uses glassmorphism aesthetic (bg-white/5, ring-1 ring-white/10)
+- All V2 components support `useReducedMotion()` for accessibility
+- Original screens preserved for rollback (Auth.tsx, Terminal.tsx, etc.)
+
 ## [1.1.0] - 2026-01-28
 
 ### Added
@@ -118,6 +204,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY policy for vulnerability reporting
 - ARCHITECTURE overview
 
+[2.0.1]: https://github.com/carloluisito/claudedesk/releases/tag/v2.0.1
+[2.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v2.0.0
 [1.1.0]: https://github.com/carloluisito/claudedesk/releases/tag/v1.1.0
 [1.0.9]: https://github.com/carloluisito/claudedesk/releases/tag/v1.0.9
 [1.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v1.0.0

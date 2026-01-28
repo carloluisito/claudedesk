@@ -1,6 +1,6 @@
 {
   "name": "claudedesk",
-  "version": "1.1.1",
+  "version": "2.0.1",
   "description": "AI-powered development platform with CLI and web interface for Claude Code",
   "type": "module",
   "main": "dist/index.js",
@@ -86,6 +86,7 @@
     "react-syntax-highlighter": "^16.1.0",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "shiki": "^3.21.0",
     "tailwind-merge": "^2.5.0",
     "tree-kill": "^1.2.2",
     "uuid": "^11.0.0",

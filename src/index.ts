@@ -1,5 +1,5 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, request as httpRequest } from 'http';
 import { join, dirname } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -85,18 +85,53 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   // Static UI files - serve from Vite build
   // Use __dirname to find client files relative to this file (works with global npm install)
   const staticDir = join(__dirname, 'client');
-  if (existsSync(staticDir)) {
+  const hasBuiltClient = existsSync(join(staticDir, 'index.html'));
+  const viteDevPort = 5173;
+
+  if (hasBuiltClient) {
     app.use(express.static(staticDir));
   }
 
   // SPA fallback - serve index.html for non-API routes
+  // In dev mode (no built client), proxy to Vite dev server for tunnel support
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
-      const indexPath = join(staticDir, 'index.html');
-      if (existsSync(indexPath)) {
+      if (hasBuiltClient) {
+        const indexPath = join(staticDir, 'index.html');
         res.sendFile(indexPath);
       } else {
-        res.status(404).send('UI not built. Run: npm run build:client');
+        // Dev mode: proxy to Vite dev server
+        const proxyReq = httpRequest(
+          {
+            hostname: 'localhost',
+            port: viteDevPort,
+            path: req.url,
+            method: req.method,
+            headers: req.headers,
+          },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+            proxyRes.pipe(res, { end: true });
+          }
+        );
+
+        proxyReq.on('error', () => {
+          res.status(503).send(`
+            <html>
+              <head><title>ClaudeDesk - Dev Mode</title></head>
+              <body style="font-family: system-ui; background: #0d1117; color: #c9d1d9; padding: 40px; text-align: center;">
+                <h1>Vite Dev Server Not Running</h1>
+                <p>The UI dev server is not available on port ${viteDevPort}.</p>
+                <p style="color: #8b949e;">To use tunnels in development mode, run:</p>
+                <pre style="background: #161b22; padding: 16px; border-radius: 8px; display: inline-block;">npm run dev</pre>
+                <p style="color: #8b949e; margin-top: 24px;">Or for production mode:</p>
+                <pre style="background: #161b22; padding: 16px; border-radius: 8px; display: inline-block;">npm run build && npm start</pre>
+              </body>
+            </html>
+          `);
+        });
+
+        req.pipe(proxyReq, { end: true });
       }
     }
   });
@@ -111,6 +146,51 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   // Initialize WebSocket server
   const authToken = getAuthToken();
   wsManager.initialize(server, authToken);
+
+  // In dev mode, set up WebSocket proxy to Vite for HMR support via tunnel
+  if (!hasBuiltClient) {
+    wsManager.setUpgradeFallback((request, socket, head) => {
+      // Proxy WebSocket upgrade to Vite dev server
+      const proxyReq = httpRequest(
+        {
+          hostname: 'localhost',
+          port: viteDevPort,
+          path: request.url,
+          method: 'GET',
+          headers: {
+            ...request.headers,
+            host: `localhost:${viteDevPort}`,
+          },
+        },
+        () => {} // Response handled via upgrade
+      );
+
+      proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+        // Forward the upgrade response to the client
+        socket.write(
+          `HTTP/1.1 101 Switching Protocols\r\n` +
+          `Upgrade: websocket\r\n` +
+          `Connection: Upgrade\r\n` +
+          `Sec-WebSocket-Accept: ${proxyRes.headers['sec-websocket-accept']}\r\n` +
+          `\r\n`
+        );
+
+        // Pipe data between client and Vite
+        proxySocket.pipe(socket);
+        socket.pipe(proxySocket);
+
+        // Handle close
+        socket.on('close', () => proxySocket.destroy());
+        proxySocket.on('close', () => socket.destroy());
+      });
+
+      proxyReq.on('error', () => {
+        socket.destroy();
+      });
+
+      proxyReq.end();
+    });
+  }
 
   // Initialize terminal session manager (loads saved sessions)
   // This is imported above, which triggers initialization

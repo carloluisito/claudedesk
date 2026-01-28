@@ -23,9 +23,6 @@ tunnelRouter.get('/status', async (_req: Request, res: Response) => {
     const tunnelState = remoteTunnelManager.getStatus();
     const cloudflaredInfo = await remoteTunnelManager.isCloudflaredInstalled();
 
-    // Debug logging
-    console.log('[Tunnel API] Status request - tunnelState:', JSON.stringify(tunnelState));
-
     res.json({
       success: true,
       data: {

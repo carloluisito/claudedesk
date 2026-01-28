@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server, IncomingMessage } from 'http';
+import { Duplex } from 'stream';
 import { parse as parseUrl } from 'url';
 
 export interface WSMessage {
@@ -19,12 +20,22 @@ export interface WSClient {
 }
 
 type MessageHandler = (client: WSClient, message: WSMessage) => void | Promise<void>;
+type UpgradeFallbackHandler = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
 class WebSocketManager {
   private wss: WebSocketServer | null = null;
   private clients: Map<string, WSClient> = new Map();
   private handlers: Map<string, MessageHandler> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private upgradeFallback: UpgradeFallbackHandler | null = null;
+
+  /**
+   * Set a fallback handler for non-/ws WebSocket upgrade requests.
+   * Used to proxy WebSocket connections to Vite in dev mode.
+   */
+  setUpgradeFallback(handler: UpgradeFallbackHandler): void {
+    this.upgradeFallback = handler;
+  }
 
   initialize(server: Server, authToken: string): void {
     this.wss = new WebSocketServer({ noServer: true });
@@ -72,6 +83,9 @@ class WebSocketManager {
           }
           this.wss!.emit('connection', ws, request, token);
         });
+      } else if (this.upgradeFallback) {
+        // Use fallback handler (e.g., proxy to Vite dev server)
+        this.upgradeFallback(request, socket, head);
       } else {
         socket.destroy();
       }

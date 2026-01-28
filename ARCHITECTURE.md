@@ -87,6 +87,25 @@ Port: 8787 (configurable via CLAUDEDESK_PORT)
 WebSocket: ws://localhost:8787/ws
 ```
 
+#### Dev Mode vs Production Mode
+
+The server operates differently based on whether the client is built:
+
+**Production Mode** (`hasBuiltClient = true`):
+- Serves static files from `dist/client/`
+- SPA fallback serves `index.html` for all non-API routes
+- Used when running `npm run build && npm start`
+
+**Development Mode** (`hasBuiltClient = false`):
+- Proxies HTTP requests to Vite dev server on port 5173
+- Proxies WebSocket upgrades to Vite for HMR (Hot Module Replacement)
+- Shows helpful error page if Vite is not running
+- Used when running `npm run dev` (both Express + Vite concurrently)
+
+This dual-mode architecture enables Cloudflare tunnels to work in both environments:
+- In production: Tunnel → Express → Static files
+- In development: Tunnel → Express → Vite proxy → React app with HMR
+
 ### API Routes
 
 | Router | Path | Purpose |
@@ -190,14 +209,29 @@ interface WSClient {
 }
 ```
 
-Message types:
+**Upgrade Request Routing:**
+
+WebSocket upgrade requests are routed by pathname:
+- `/ws` → ClaudeDesk WebSocket (authenticated, handled internally)
+- Other paths → Delegated to `upgradeFallback` handler (if set)
+
+```typescript
+// Set fallback for non-/ws WebSocket upgrades (used for Vite HMR proxy)
+wsManager.setUpgradeFallback((request, socket, head) => {
+  // Proxy to Vite dev server for HMR support via tunnel
+});
+```
+
+In dev mode, the fallback proxies WebSocket connections to Vite (port 5173) to enable Hot Module Replacement through Cloudflare tunnels.
+
+**Message types:**
 - `subscribe` / `unsubscribe` - Session subscription
 - `message` - Send user message to Claude
 - `set-mode` - Toggle plan/direct mode
 - `cancel` - Cancel running operation
 - `approve-plan` - Execute approved plan with answers
 
-Broadcasting:
+**Broadcasting:**
 - `broadcastToSession()` - Send to all clients subscribed to a session
 - `broadcastAll()` - Send to all connected clients
 
@@ -305,20 +339,79 @@ Key actions:
 - `loadMonorepoInfo()` / `loadDockerInfo()` - Project detection
 - `extractSignals()` - Parse warnings/errors from logs
 
+#### `terminalUIStore.ts` - Terminal UI State (v2.0)
+
+Centralized overlay and panel management, replacing 30+ individual useState hooks:
+
+```typescript
+interface TerminalUIState {
+  activeOverlay: 'none' | 'command-palette' | 'settings' | 'export' | 'agents' | 'mcp-approval';
+  expandedPanels: Set<'activity' | 'changes' | 'queue'>;
+  mobileSheet: 'actions' | 'preview' | null;
+  contextMenu: { x: number; y: number; items: MenuItem[] } | null;
+  jumpMenu: { isOpen: boolean; filter: string };
+  messageSearch: { isOpen: boolean; query: string; results: Message[] };
+  splitView: { enabled: boolean; ratio: number };
+}
+```
+
+Key actions:
+- `openOverlay()` / `closeOverlay()` - Single overlay management (only one at a time)
+- `togglePanel()` - Expand/collapse sidebar panels (multiple allowed)
+- `setMobileSheet()` - Mobile bottom sheet control
+- `openContextMenu()` / `closeContextMenu()` - Right-click menus
+- `toggleJumpMenu()` / `toggleMessageSearch()` - Quick navigation
+
+Benefits:
+- Single source of truth for UI state
+- Only one overlay active at a time (prevents stacking)
+- Desktop: multiple panels can be expanded
+- Mobile: uses sheet pattern instead of modals
+
+### Design System (v2.0)
+
+New unified design system at `src/ui/app/design-system/`:
+
+```
+design-system/
+  tokens/
+    colors.ts          # Semantic color palette (bg, surface, text, accent, status)
+    spacing.ts         # 4px-based spacing scale, border radius scale
+    typography.ts      # Font scales, text styles (headings, body, labels, code)
+  primitives/
+    Surface.tsx        # Base glass surface with variants (default, elevated, inset, outline)
+    Stack.tsx          # Flex layout component (HStack, VStack exports)
+    Text.tsx           # Typography component with semantic styling
+  compounds/
+    Panel.tsx          # Expandable/collapsible content sections
+    Drawer.tsx         # Side drawer (inline, not modal)
+    Stepper.tsx        # Multi-step flow with dot/number/full indicators
+    InlineForm.tsx     # Form that expands in place
+  patterns/
+    CommandBar.tsx     # Unified command input pattern
+    StatusStrip.tsx    # Mobile bottom status bar (replaces FAB)
+```
+
+Usage:
+```typescript
+import { Surface, Stack, Text } from '@/design-system/primitives';
+import { Panel, Stepper } from '@/design-system/compounds';
+```
+
 ### Screens
 
 | Screen | Path | Purpose |
 |--------|------|---------|
 | `Home.tsx` | `/` | Landing page, repo selection |
-| `Launcher.tsx` | `/launcher` | Quick session launcher |
-| `Terminal.tsx` | `/terminal/:sessionId` | Main terminal interface |
-| `TerminalWorkspace.tsx` | `/workspace/:sessionId` | Enhanced workspace view |
+| `AuthV2.tsx` | `/auth` | Token/PIN authentication with stepper flow |
+| `TerminalV2.tsx` | `/terminal` | Main terminal interface (modular architecture) |
+| `ReviewChangesV2.tsx` | `/review-changes` | Git diff review with Shiki syntax highlighting |
+| `PreShipReviewV2.tsx` | `/pre-ship` | Pre-push review with safety checklist and PR preview |
+| `RunPage.tsx` | `/run` | App runner with logs |
+| `Settings.tsx` | `/settings/*` | Configuration pages with tabbed navigation |
 | `SessionDashboard.tsx` | `/sessions` | Session management |
-| `ReviewChanges.tsx` | `/review/:sessionId` | Git diff review |
-| `PreShipReview.tsx` | `/ship/:sessionId` | Pre-push review and PR creation |
-| `RunPage.tsx` | `/run/:repoId` | App runner with logs |
-| `Settings.tsx` | `/settings/*` | Configuration pages |
-| `Auth.tsx` | `/auth` | Token authentication |
+
+**Note:** Original v1 screens (Auth.tsx, Terminal.tsx, ReviewChanges.tsx, PreShipReview.tsx) are preserved for rollback if needed.
 
 ### Ship Workflow Architecture
 
@@ -407,31 +500,66 @@ All endpoints support `repoId` parameter for multi-repo sessions.
 
 ```
 src/ui/app/
++-- design-system/          # v2.0 Unified Design System
+|   +-- tokens/             # Design tokens
+|   |   +-- colors.ts       # Semantic color palette
+|   |   +-- spacing.ts      # Spacing and border radius scales
+|   |   +-- typography.ts   # Font scales and text styles
+|   +-- primitives/         # Base building blocks
+|   |   +-- Surface.tsx     # Glassmorphism card component
+|   |   +-- Stack.tsx       # Flex layout (HStack, VStack)
+|   |   +-- Text.tsx        # Typography component
+|   +-- compounds/          # Composed UI patterns
+|   |   +-- Panel.tsx       # Expandable sections
+|   |   +-- Drawer.tsx      # Side drawer
+|   |   +-- Stepper.tsx     # Multi-step flows
+|   |   +-- InlineForm.tsx  # Inline expandable forms
+|   +-- patterns/           # App-specific patterns
+|       +-- CommandBar.tsx  # Command input
+|       +-- StatusStrip.tsx # Mobile bottom bar
 +-- components/
-|   +-- layout/         # Shell, Header, Navigation
-|   +-- terminal/       # Terminal-specific components
-|   |   +-- v2/         # Redesigned terminal components
-|   |   |   +-- changes/        # Ship workflow components
-|   |   |   |   +-- SummaryCard.tsx    # File count, +/- stats, branch info
-|   |   |   |   +-- FileList.tsx       # Expandable file list
-|   |   |   |   +-- FileItem.tsx       # Individual file row
-|   |   |   |   +-- ShipForm.tsx       # Commit/push/PR form
-|   |   |   |   +-- SuccessCard.tsx    # Success state display
-|   |   |   |   +-- ErrorCard.tsx      # Error state with retry
-|   |   |   +-- ChangesPanel.tsx       # Main ship workflow orchestrator
-|   |   |   +-- SidePanel.tsx          # Activity/Changes tabbed panel
-|   +-- review/         # File review & approval components
-|   |   +-- ReviewFileList.tsx      # File list with status dots and approval badges
-|   |   +-- ReviewDiffViewer.tsx    # Diff display with approve button
-|   |   +-- ReviewSummaryPanel.tsx  # Progress bar, stats, Approve All button
-|   |   +-- ReviewTopBar.tsx        # Header navigation
-|   +-- settings/       # Settings forms and modals
-|   +-- ui/             # Reusable UI primitives
-+-- hooks/              # Custom React hooks
-+-- lib/                # Utilities (api, formatters, sounds)
-+-- screens/            # Page components
-+-- store/              # Zustand stores
-+-- types/              # TypeScript definitions
+|   +-- layout/             # Shell, Header, Navigation
+|   +-- auth/               # v2.0 Auth components
+|   |   +-- AuthStepper.tsx       # Stepper flow orchestrator
+|   |   +-- AuthMethodPicker.tsx  # Token vs PIN selection
+|   |   +-- TokenAuthForm.tsx     # Token input form
+|   |   +-- PinAuthForm.tsx       # PIN entry form
+|   |   +-- PWAInstallPrompt.tsx  # Non-blocking PWA prompt
+|   |   +-- AuthSuccess.tsx       # Success state
+|   +-- terminal/           # Terminal-specific components
+|   |   +-- layout/         # v2.0 Layout components
+|   |   |   +-- TerminalLayout.tsx     # Main grid structure
+|   |   |   +-- ConversationArea.tsx   # Messages + composer
+|   |   |   +-- SidebarArea.tsx        # Activity + changes
+|   |   |   +-- MobileStatusStrip.tsx  # Mobile bottom bar
+|   |   +-- overlays/       # v2.0 Overlay components
+|   |   |   +-- OverlayManager.tsx     # Renders active overlay
+|   |   +-- v2/             # v2.0 Feature components
+|   |   |   +-- changes/    # Ship workflow
+|   |   |   +-- ChangesPanel.tsx
+|   |   |   +-- SidePanel.tsx
+|   +-- review/             # v2.0 Review components
+|   |   +-- DiffViewerV2.tsx      # Shiki syntax highlighting
+|   |   +-- FileTree.tsx          # Collapsible file tree
+|   |   +-- ReviewLayout.tsx      # 3-column responsive layout
+|   |   +-- ApprovalSummary.tsx   # Approval progress panel
+|   |   +-- ReviewTopBar.tsx      # Header navigation
+|   +-- ship/               # v2.0 Ship components
+|   |   +-- SafetyChecklist.tsx   # Warning severity system
+|   |   +-- BranchCompare.tsx     # Source→target visual
+|   |   +-- PRPreview.tsx         # Live PR preview
+|   +-- settings/           # Settings components
+|   |   +-- SettingsLayout.tsx    # Tabbed navigation
+|   +-- ui/                 # Reusable UI primitives
++-- hooks/                  # Custom React hooks
++-- lib/                    # Utilities (api, formatters, sounds)
++-- screens/                # Page components (V2 versions active)
++-- store/                  # Zustand stores
+|   +-- terminalStore.ts    # Session state
+|   +-- terminalUIStore.ts  # v2.0 UI overlay/panel state
+|   +-- appStore.ts         # Global app state
+|   +-- runStore.ts         # Running apps state
++-- types/                  # TypeScript definitions
 ```
 
 ## Claude Code Integration
