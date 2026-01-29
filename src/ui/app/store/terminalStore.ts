@@ -628,6 +628,9 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
               // Clear activity when status changes to idle
               if (message.status === 'idle') {
                 get().updateSession(sessionId, { currentActivity: undefined });
+                // Refresh git status to update Review phase with any file changes
+                requestCache.invalidate(CACHE_KEYS.GIT_STATUS(sessionId));
+                get().fetchGitStatus(sessionId);
               }
             }
             break;
