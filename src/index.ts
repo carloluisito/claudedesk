@@ -23,7 +23,7 @@ function getVersion(): string {
 import { apiRouter } from './api/routes.js';
 import { terminalRouter } from './api/terminal-routes.js';
 import { appRouter } from './api/app-routes.js';
-import { authMiddleware, rateLimitMiddleware, errorHandler, getAuthToken } from './api/middleware.js';
+import { authMiddleware, rateLimitMiddleware, errorHandler } from './api/middleware.js';
 import { sharedDockerManager } from './core/shared-docker-manager.js';
 import { settingsManager } from './config/settings.js';
 import { wsManager } from './core/ws-manager.js';
@@ -165,8 +165,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   serverInstance = server;
 
   // Initialize WebSocket server
-  const authToken = getAuthToken();
-  wsManager.initialize(server, authToken);
+  wsManager.initialize(server);
 
   // In dev mode, set up WebSocket proxy to Vite for HMR support via tunnel
   if (!hasBuiltClient) {

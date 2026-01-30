@@ -439,13 +439,13 @@ export function useTerminal() {
 
   // Connect WebSocket
   useEffect(() => {
-    if (token && !isConnected) {
-      connect(token);
+    if (!isConnected) {
+      connect();
     }
     return () => {
       disconnect();
     };
-  }, [token, connect, disconnect, isConnected]);
+  }, [connect, disconnect, isConnected]);
 
   // Show connection toast on connection state changes
   useEffect(() => {

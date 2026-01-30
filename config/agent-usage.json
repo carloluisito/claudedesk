@@ -3,20 +3,20 @@
     {
       "agentId": "ui-spec-generator",
       "agentName": "ui-spec-generator",
-      "lastUsedAt": "2026-01-30T10:10:41.452Z",
-      "useCount": 9
+      "lastUsedAt": "2026-01-30T13:54:12.053Z",
+      "useCount": 10
     },
     {
       "agentId": "product-spec-designer",
       "agentName": "product-spec-designer",
-      "lastUsedAt": "2026-01-30T10:10:41.451Z",
-      "useCount": 5
+      "lastUsedAt": "2026-01-30T13:54:12.052Z",
+      "useCount": 7
     },
     {
       "agentId": "architecture-design",
       "agentName": "architecture-design",
-      "lastUsedAt": "2026-01-30T09:37:56.392Z",
-      "useCount": 4
+      "lastUsedAt": "2026-01-30T13:54:12.051Z",
+      "useCount": 6
     }
   ]
 }

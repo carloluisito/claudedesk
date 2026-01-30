@@ -229,7 +229,7 @@ interface TerminalStore {
   clearMCPApproval: () => void;
 
   // WebSocket
-  connect: (token: string) => void;
+  connect: () => void;
   disconnect: () => void;
 
   // Internal
@@ -527,7 +527,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     });
   },
 
-  connect: (token: string) => {
+  connect: () => {
     // Close any existing connection first
     const existingWs = get().ws;
     if (existingWs) {
@@ -535,7 +535,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
 
     const ws = new WebSocket(wsUrl);
     set({ ws }); // Store WebSocket immediately
@@ -559,7 +559,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       setTimeout(() => {
         const { ws: currentWs } = get();
         if (!currentWs) {
-          get().connect(token);
+          get().connect();
         }
       }, 3000);
     };

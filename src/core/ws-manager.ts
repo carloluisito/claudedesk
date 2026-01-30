@@ -14,7 +14,6 @@ export interface WSMessage {
 export interface WSClient {
   id: string;
   ws: WebSocket;
-  token: string;
   subscribedSessions: Set<string>;
   isAlive: boolean;
 }
@@ -37,51 +36,16 @@ class WebSocketManager {
     this.upgradeFallback = handler;
   }
 
-  initialize(server: Server, authToken: string): void {
+  initialize(server: Server): void {
     this.wss = new WebSocketServer({ noServer: true });
 
     // Handle HTTP upgrade requests
     server.on('upgrade', (request, socket, head) => {
-      const { pathname, query } = parseUrl(request.url || '', true);
+      const { pathname } = parseUrl(request.url || '', true);
 
       if (pathname === '/ws') {
-        // SEC-05: Prefer Sec-WebSocket-Protocol header over query string to avoid token in logs
-        // Protocol header format: "token, <actual-token>" - the first value identifies the protocol,
-        // the second is the actual authentication token
-        let token: string | undefined;
-        let useProtocolHeader = false;
-
-        const protocolHeader = request.headers['sec-websocket-protocol'];
-        if (protocolHeader) {
-          // Parse "token, <actual-token>" format
-          const protocols = typeof protocolHeader === 'string'
-            ? protocolHeader.split(',').map(p => p.trim())
-            : protocolHeader;
-          if (protocols.length >= 2 && protocols[0] === 'token') {
-            token = protocols[1];
-            useProtocolHeader = true;
-          }
-        }
-
-        // Fall back to query param for backward compatibility (deprecated)
-        if (!token) {
-          token = query.token as string;
-        }
-
-        if (token !== authToken) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-
         this.wss!.handleUpgrade(request, socket, head, (ws) => {
-          // If client used protocol header auth, echo back the protocol name
-          // This is required by WebSocket spec when using Sec-WebSocket-Protocol
-          if (useProtocolHeader) {
-            // Note: ws library handles this automatically if we pass protocol to handleUpgrade
-            // but we emit connection event manually, so client will receive the echo
-          }
-          this.wss!.emit('connection', ws, request, token);
+          this.wss!.emit('connection', ws, request);
         });
       } else if (this.upgradeFallback) {
         // Use fallback handler (e.g., proxy to Vite dev server)
@@ -92,12 +56,11 @@ class WebSocketManager {
     });
 
     // Handle new connections
-    this.wss.on('connection', (ws: WebSocket, _request: IncomingMessage, token: string) => {
+    this.wss.on('connection', (ws: WebSocket, _request: IncomingMessage) => {
       const clientId = this.generateId();
       const client: WSClient = {
         id: clientId,
         ws,
-        token,
         subscribedSessions: new Set(),
         isAlive: true,
       };
