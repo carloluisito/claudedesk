@@ -473,10 +473,6 @@ export function useTerminal() {
     }
   }, [activeSessionId, fetchGitStatus]);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeSession?.messages]);
 
   // Reset sending state when session status changes
   useEffect(() => {

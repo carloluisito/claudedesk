@@ -1,6 +1,6 @@
 # ClaudeDesk Architecture
 
-Technical architecture documentation for ClaudeDesk v3.2.0 - an AI-powered development platform with Claude terminal interface.
+Technical architecture documentation for ClaudeDesk v3.3.0 - an AI-powered development platform with Claude terminal interface.
 
 ## Overview
 
@@ -276,6 +276,20 @@ Key responsibilities:
 - WebSocket broadcast of `system:update-available` events
 - Configurable check interval (default: 6 hours)
 
+#### `pipeline-monitor.ts` - CI/CD Pipeline Monitoring
+
+Polls GitHub Actions and GitLab CI pipelines after a push and broadcasts real-time status via WebSocket.
+
+Key responsibilities:
+- GitHub Actions and GitLab CI support
+- Exponential backoff polling (10s → 15s → 22s → 30s cap)
+- Error categorization from job names and log content (test_failure, build_error, lint_error, type_error, timeout)
+- WebSocket broadcasting: `pipeline:status`, `pipeline:complete`, `pipeline:stalled`, `pipeline:error`
+- Fix CI prompt composition with log excerpts (last 200 lines)
+- Persistence to `config/pipeline-monitors.json`
+- Max 10 concurrent monitors, 90s stall timeout
+- Token resolution: `GITHUB_TOKEN` / `gh auth token`, `GITLAB_TOKEN` / `glab auth token` / workspace OAuth
+
 ## Frontend Architecture
 
 ### Stack
@@ -422,88 +436,46 @@ import { Panel, Stepper } from '@/design-system/compounds';
 | Screen | Path | Purpose |
 |--------|------|---------|
 | `MissionControl.tsx` | `/` and `/mission` | Default landing page with phased workflow navigator |
-| `Home.tsx` | `/home` | Repo selection and session launcher |
 | `AuthV2.tsx` | `/auth` | Token/PIN authentication with stepper flow |
-| `TerminalV2.tsx` | `/terminal` | Main terminal interface (modular architecture) |
-| `ReviewChangesV2.tsx` | `/review-changes` | Git diff review with Shiki syntax highlighting |
-| `PreShipReviewV2.tsx` | `/pre-ship` | Pre-push review with safety checklist and PR preview |
-| `RunPage.tsx` | `/run` | App runner with logs |
 | `Settings.tsx` | `/settings/*` | Configuration pages with tabbed navigation |
+| `settings/Workspaces.tsx` | `/settings/workspaces` | Workspace and repository management |
+| `settings/Integrations.tsx` | `/settings/integrations` | GitHub/GitLab OAuth integration |
+| `settings/ApiConfig.tsx` | `/settings/api-config` | Claude API token configuration |
 | `settings/System.tsx` | `/settings/system` | Update settings and cache management |
-| `SessionDashboard.tsx` | - | Session management (not currently routed) |
-| `Launcher.tsx` | - | Alternative launcher interface (not currently routed) |
 
-**Note:** Original v1 screens (Auth.tsx, Terminal.tsx, ReviewChanges.tsx, PreShipReview.tsx) were removed. Only current implementations exist.
+**Note:** v1 screens (Auth, Terminal, ReviewChanges, PreShipReview) and v2 standalone screens (Home, TerminalV2, ReviewChangesV2, PreShipReviewV2, RunPage, SessionDashboard, Launcher) were removed in v3.0.0. The MissionControl phased workflow replaced all terminal and review screens.
 
 ### Ship Workflow Architecture
 
-The ship workflow allows users to commit, push, and create PRs directly from the terminal interface.
+The ship workflow is integrated into MissionControl's phased navigator (PROMPT → REVIEW → SHIP).
 
 #### Component Hierarchy
 
 ```
-TerminalV2.tsx
-  └── SidePanel.tsx (tabbed: Activity | Changes)
-        └── ChangesPanel.tsx (orchestrator)
-              ├── ChangesCard.tsx (stats display)
-              ├── changes/ (file list components)
-              └── Ship modal integration
+MissionControl.tsx
+  └── PhaseNavigator.tsx (PROMPT | REVIEW | SHIP)
+        ├── PromptPhase.tsx     # Chat with Claude
+        ├── ReviewPhase.tsx     # File-by-file diff review with approval
+        └── ShipPhase.tsx       # Commit, push, create PR
 ```
 
-#### State Machine
+#### Phase Flow
 
 ```
-┌───────────┐    Ship Click    ┌───────────┐
-│ collapsed │ ───────────────> │ expanded  │
-│ (default) │                  │ (form)    │
-└───────────┘                  └─────┬─────┘
-      ^                              │
-      │                         Ship Submit
-      │                              │
-      │                              v
-      │    Done            ┌────────────────┐
-      └─────────────────── │    success     │
-      │                    └────────────────┘
-      │
-      │    Dismiss/Retry   ┌────────────────┐
-      └─────────────────── │     error      │
-                           └────────────────┘
+┌────────────┐   Changes   ┌────────────┐   Approved   ┌────────────┐
+│   PROMPT   │ ──────────> │   REVIEW   │ ──────────>  │    SHIP    │
+│ (chat)     │             │ (diff/approve) │           │ (commit/push) │
+└────────────┘             └────────────┘              └────────────┘
 ```
-
-#### Smart Routing
-
-ChangesPanel automatically routes to full-screen review (`/pre-ship`) for:
-- More than 10 changed files
-- Security-sensitive files matching patterns:
-  - `auth`, `login`, `password`, `security`, `crypto`
-  - `token`, `.env`, `secrets`, `credentials`, `key`
 
 #### File Approval Workflow
 
-The `/review` route provides a full-screen interface for reviewing and approving changes before shipping.
-
-**Visual Design:**
-- Status dots indicate file change type:
-  - Green = created/added
-  - Yellow = modified
-  - Red = deleted
-  - Blue = renamed
-- Full file paths displayed in natural order (directory/filename)
-- Progress bar shows approval completion percentage
-
-**Approval Flow:**
-1. User navigates to Review Changes screen
-2. Each file must be approved before shipping
-3. Approval options:
-   - Click "Approve" button in diff viewer header (per-file)
-   - Click approval badge in file list (per-file)
-   - Click "Approve All Files" in summary panel (bulk)
-4. "Proceed to Ship" button enables when all files approved
-
-**State Management:**
-- Approval state is client-side only (React useState)
-- Not persisted to backend - resets if user navigates away
-- Progress tracked as: approved count / total files
+ReviewPhase provides file-by-file diff review with approval:
+- Status dots: Green (created), Yellow (modified), Red (deleted), Blue (renamed)
+- Approval options: per-file button, approval badge, or "Approve All"
+- Progress bar shows approval percentage
+- "Proceed to Ship" button enables when all files approved
+- Approval state is client-side only (React useState, not persisted)
 
 #### API Endpoints
 
@@ -557,29 +529,16 @@ src/ui/app/
 |   |   +-- PWAInstallPrompt.tsx  # Non-blocking PWA prompt
 |   |   +-- AuthSuccess.tsx       # Success state
 |   +-- terminal/           # Terminal-specific components
-|   |   +-- layout/         # Layout components
-|   |   |   +-- TerminalLayout.tsx     # Main grid structure
-|   |   |   +-- ConversationArea.tsx   # Messages + composer
-|   |   |   +-- SidebarArea.tsx        # Activity + changes
-|   |   |   +-- MobileStatusStrip.tsx  # Mobile bottom bar
-|   |   +-- overlays/       # Overlay components
-|   |   |   +-- OverlayManager.tsx     # Renders active overlay
-|   |   +-- v2/             # Feature components
-|   |   |   +-- changes/    # Ship workflow
-|   |   |   +-- ChangesPanel.tsx
-|   |   |   +-- SidePanel.tsx
-|   +-- review/             # Review components
-|   |   +-- DiffViewerV2.tsx      # Shiki syntax highlighting
-|   |   +-- FileTree.tsx          # Collapsible file tree
-|   |   +-- ReviewLayout.tsx      # 3-column responsive layout
-|   |   +-- ApprovalSummary.tsx   # Approval progress panel
-|   |   +-- ReviewTopBar.tsx      # Header navigation
-|   +-- ship/                     # Ship components
-|   |   +-- SafetyChecklist.tsx   # Warning severity system
-|   |   +-- BranchCompare.tsx     # Source→target visual
-|   |   +-- PRPreview.tsx         # Live PR preview
+|   |   +-- MessageItem.tsx        # Chat message rendering
+|   |   +-- ActivityTimeline.tsx   # Tool activity timeline
+|   |   +-- CodeChangesSummary.tsx # File changes display
+|   |   +-- overlays/             # Overlay components
+|   |   |   +-- OverlayManager.tsx # Renders active overlay
+|   |   +-- v2/                   # Feature components
+|   |       +-- Composer.tsx       # Message input composer
 |   +-- settings/           # Settings components
 |   |   +-- SettingsLayout.tsx    # Tabbed navigation
+|   |   +-- CICDSettings.tsx      # CI/CD pipeline monitoring config
 |   |   +-- CacheManagement.tsx   # Cache size display and clearing
 |   |   +-- UpdateSettings.tsx    # Auto-update toggle and interval config
 |   +-- ui/                 # Reusable UI primitives
@@ -735,6 +694,7 @@ The server handles SIGINT/SIGTERM with ordered cleanup:
 | `config/settings.json` | User preferences |
 | `config/workspaces.json` | Workspace OAuth tokens |
 | `config/mcp-servers.json` | MCP server configurations |
+| `config/pipeline-monitors.json` | CI/CD pipeline monitor state |
 | `config/skills/*.md` | Custom skill definitions |
 
 ## Ports and Services

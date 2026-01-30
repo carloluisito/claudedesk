@@ -37,6 +37,19 @@
     "clientId": "your-gitlab-oauth-client-id"
   },
 
+  "update": {
+    "autoCheck": true,
+    "checkIntervalHours": 6
+  },
+
+  "cicd": {
+    "_comment": "CI/CD Pipeline Monitoring. Monitors GitHub Actions and GitLab CI after shipping code.",
+    "autoMonitor": true,
+    "pollIntervalMs": 10000,
+    "maxPollDurationMs": 1800000,
+    "showNotifications": true
+  },
+
   "docker": {
     "enabled": false,
     "autoStart": false,

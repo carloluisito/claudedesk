@@ -107,7 +107,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   // Use __dirname to find client files relative to this file (works with global npm install)
   const staticDir = join(__dirname, 'client');
   const hasBuiltClient = existsSync(join(staticDir, 'index.html'));
-  const viteDevPort = 5173;
+  const viteDevPort = parseInt(process.env.VITE_DEV_PORT || '5173', 10);
 
   if (hasBuiltClient) {
     app.use(express.static(staticDir));

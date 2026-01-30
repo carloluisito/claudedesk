@@ -59,6 +59,7 @@ It is not an IDE. It is not a replacement for Claude Code. It is a session manag
 - **Stop/Cancel** - Stop Claude mid-generation with Escape key or Stop button; partial responses are preserved with cancellation marker
 - **Queue Resume Controls** - After stopping, choose to resume queue processing or clear all pending messages
 - **MCP Server Integration** - Configure and manage MCP servers for external tools (GitHub, PostgreSQL, Slack, and more). Tool invocation during sessions coming soon.
+- **CI/CD Pipeline Monitoring** - Automatically monitor GitHub Actions and GitLab CI after shipping code, with error categorization and Fix CI prompt composition
 
 ## File Review & Approval
 
@@ -164,6 +165,72 @@ For servers not in the catalog:
 > - Claude invoking MCP tools during conversations
 > - Tool approval workflow during sessions
 > - Tool activity in the timeline
+
+## CI/CD Pipeline Monitoring
+
+ClaudeDesk automatically monitors your CI/CD pipelines after shipping code, giving you real-time feedback on whether your push passed or failed.
+
+### Supported Platforms
+
+| Platform | Token Source |
+|----------|-------------|
+| **GitHub Actions** | `gh auth token`, or `GITHUB_TOKEN` env var |
+| **GitLab CI** | `glab auth token`, `GITLAB_TOKEN` env var, or workspace OAuth token |
+
+### How It Works
+
+1. After you ship code (commit + push), ClaudeDesk starts polling your CI platform
+2. Pipeline status is broadcast in real-time via WebSocket
+3. If a pipeline fails, ClaudeDesk categorizes the error and can compose a "Fix CI" prompt with log excerpts
+
+### Error Categories
+
+Failed pipelines are automatically categorized:
+
+| Category | Detected From |
+|----------|---------------|
+| `test_failure` | Job/step names containing `test`, `jest`, `vitest`, `pytest`, `rspec` |
+| `build_error` | Job/step names containing `build`, `compile` |
+| `lint_error` | Job/step names containing `lint`, `eslint`, `prettier`, `rubocop` |
+| `type_error` | Job/step names containing `type`, `tsc`, `mypy` |
+| `timeout` | Timed out jobs or steps |
+
+### Configuration
+
+Configure pipeline monitoring in **Settings > CI/CD** or in `config/settings.json`:
+
+```json
+{
+  "cicd": {
+    "autoMonitor": true,
+    "pollIntervalMs": 10000,
+    "maxPollDurationMs": 1800000,
+    "showNotifications": true
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `autoMonitor` | `true` | Automatically start monitoring after shipping code |
+| `pollIntervalMs` | `10000` | Base polling interval (5s–60s). Uses exponential backoff up to 30s. |
+| `maxPollDurationMs` | `1800000` | Stop monitoring after this duration (5–60 min) |
+| `showNotifications` | `true` | Show notifications for pipeline completion and failures |
+
+### Limits
+
+- Maximum 10 concurrent pipeline monitors
+- Pipelines with no runs detected after 90 seconds are marked as stalled
+- Poll interval uses exponential backoff: 10s → 15s → 22s → 30s (cap)
+
+### WebSocket Events
+
+| Event | Description |
+|-------|-------------|
+| `pipeline:status` | Periodic status update during polling |
+| `pipeline:complete` | All pipeline runs finished (success or failure) |
+| `pipeline:stalled` | No pipeline runs detected or max duration exceeded |
+| `pipeline:error` | Auth or network error stopped monitoring |
 
 ## Keyboard Shortcuts
 
@@ -328,6 +395,7 @@ export CLAUDEDESK_DATA_DIR=/custom/path
     repos.json             # Repository configuration
     workspaces.json        # Workspace definitions
     mcp-servers.json       # MCP server configurations (auto-created)
+    pipeline-monitors.json # CI/CD pipeline monitor state (auto-created)
     terminal-sessions.json # Persisted session data
     skills/                # Custom Claude skills
     usage/                 # API usage tracking
@@ -439,7 +507,7 @@ Returns server health status and version information. Used for Docker healthchec
   "success": true,
   "data": {
     "status": "ok",
-    "version": "3.0.0",
+    "version": "3.3.0",
     "uptime": 12345,
     "timestamp": "2026-01-28T12:00:00.000Z"
   }
@@ -1003,18 +1071,17 @@ claudedesk --data-dir /path/to/restored/data
 
 ```
 src/
-  api/           # Express routes (mcp-routes, agent-routes, tunnel-routes, etc.)
+  api/           # Express routes (mcp-routes, agent-routes, tunnel-routes, system-routes, etc.)
   core/          # Claude invoker, git operations, session management
                  # MCP: mcp-client.ts, mcp-manager.ts
+                 # CI/CD: pipeline-monitor.ts
   config/        # Settings, workspaces, skills
                  # MCP: mcp-servers.ts (registry), mcp-catalog.ts (templates)
   ui/app/        # React frontend
     components/
       mission/          # MissionControl landing page and phased workflow
-      settings/         # MCP: MCPServersPanel, CatalogBrowserModal, SetupWizardModal
-      terminal/v2/      # Modular terminal components (Composer, TopBar, etc.)
-      review/           # DiffViewerV2, FileTree, ReviewLayout, ApprovalSummary
-      ship/             # SafetyChecklist, BranchCompare, PRPreview
+      settings/         # MCP, CI/CD, cache, update settings panels
+      terminal/         # Terminal components (Composer, MessageItem, ActivityTimeline, etc.)
     hooks/              # useTerminal, useMCPServers, useAgents, useRemoteAccess, etc.
     store/              # terminalStore, appStore, runStore, terminalUIStore, themeStore
 config/

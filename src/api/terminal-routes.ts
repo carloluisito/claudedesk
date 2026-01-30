@@ -456,8 +456,8 @@ terminalRouter.get('/repos/:repoId/branches', (req: Request, res: Response) => {
 
       // Remove duplicates (branches that exist both locally and remotely)
       remoteBranches = remoteBranches.filter(rb => !localBranches.includes(rb));
-    } catch {
-      // Ignore errors - might not be a git repo
+    } catch (branchErr) {
+      console.error('[branches] Git branch commands failed for', repo.path, ':', branchErr instanceof Error ? branchErr.message : branchErr);
     }
 
     // Determine main branch
@@ -1354,6 +1354,46 @@ terminalRouter.post('/sessions/:id/file-diff', (req: Request, res: Response) => 
           encoding: 'utf-8',
           timeout: 10000,
         });
+
+        // git diff returns empty for untracked/newly created files.
+        // In that case, try --cached (file may be staged as new), or
+        // fall back to reading the file content and formatting as additions.
+        if (!diff.trim() && filePath) {
+          // Try staged diff if we haven't already
+          if (!staged) {
+            try {
+              diff = execSync(`git diff --cached -M -- "${filePath}"`, {
+                cwd: workingDir,
+                encoding: 'utf-8',
+                timeout: 10000,
+              });
+            } catch {
+              // ignore
+            }
+          }
+
+          // Still empty — file is likely untracked. Read content directly.
+          if (!diff.trim()) {
+            try {
+              const fullPath = join(workingDir, filePath);
+              if (existsSync(fullPath)) {
+                const content = readFileSync(fullPath, 'utf-8');
+                const lines = content.split('\n');
+                // Format as a unified diff with all lines as additions
+                diff = [
+                  `diff --git a/${filePath} b/${filePath}`,
+                  'new file mode 100644',
+                  '--- /dev/null',
+                  `+++ b/${filePath}`,
+                  `@@ -0,0 +1,${lines.length} @@`,
+                  ...lines.map(l => `+${l}`),
+                ].join('\n');
+              }
+            } catch {
+              // ignore read errors
+            }
+          }
+        }
       } else {
         // Diff for all changed files
         diff = execSync(`git diff ${cachedFlag} -M`, {
@@ -2286,7 +2326,7 @@ terminalRouter.post('/sessions/:id/create-pr', async (req: Request, res: Respons
 terminalRouter.post('/sessions/:id/generate-pr-content', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { repoId: requestedRepoId, targetBranch: requestedTargetBranch } = req.body || {};
+    const { repoId: requestedRepoId, targetBranch: requestedTargetBranch, files } = req.body || {};
 
     const session = terminalSessionManager.getSession(id);
     if (!session) {
@@ -2353,10 +2393,18 @@ terminalRouter.post('/sessions/:id/generate-pr-content', async (req: Request, re
       }
     }
 
+    // If file list provided, scope git operations to only those files.
+    // Use -- file1 file2 syntax. Skip scoping if too many files would
+    // exceed command line limits (~7000 chars budget for paths).
+    const validFiles = Array.isArray(files) ? files.filter((f: string) => typeof f === 'string' && f.length > 0) : [];
+    const filePathsStr = validFiles.map((f: string) => `"${f.replace(/"/g, '\\"')}"`).join(' ');
+    const hasFileScope = validFiles.length > 0 && filePathsStr.length < 7000;
+    const fileScope = hasFileScope ? ` -- ${filePathsStr}` : '';
+
     // Get commit messages in this branch (skip merge commits for cleaner signal)
     let commitMessages = '';
     try {
-      commitMessages = execSync(`git log --no-merges --format="%s" ${diffRef}..HEAD`, {
+      commitMessages = execSync(`git log --no-merges --format="%s" ${diffRef}..HEAD${fileScope}`, {
         cwd: workingDir,
         encoding: 'utf-8',
         timeout: 10000,
@@ -2368,7 +2416,7 @@ terminalRouter.post('/sessions/:id/generate-pr-content', async (req: Request, re
     // If no non-merge commits, fall back to including merge commits
     if (!commitMessages) {
       try {
-        commitMessages = execSync(`git log --format="%s" ${diffRef}..HEAD`, {
+        commitMessages = execSync(`git log --format="%s" ${diffRef}..HEAD${fileScope}`, {
           cwd: workingDir,
           encoding: 'utf-8',
           timeout: 10000,
@@ -2388,14 +2436,14 @@ terminalRouter.post('/sessions/:id/generate-pr-content', async (req: Request, re
         timeout: 5000,
       }).trim();
 
-      fileChanges = execSync(`git diff --stat ${mergeBase} HEAD`, {
+      fileChanges = execSync(`git diff --stat ${mergeBase} HEAD${fileScope}`, {
         cwd: workingDir,
         encoding: 'utf-8',
         timeout: 10000,
       }).trim();
 
       // Also get a compact diff summary for better AI context when commit messages are sparse
-      const rawDiff = execSync(`git diff --compact-summary ${mergeBase} HEAD`, {
+      const rawDiff = execSync(`git diff --compact-summary ${mergeBase} HEAD${fileScope}`, {
         cwd: workingDir,
         encoding: 'utf-8',
         timeout: 10000,
@@ -2404,6 +2452,50 @@ terminalRouter.post('/sessions/:id/generate-pr-content', async (req: Request, re
       diffSample = rawDiff.length > 3000 ? rawDiff.substring(0, 3000) + '\n...(truncated)' : rawDiff;
     } catch {
       fileChanges = '';
+    }
+
+    // If scoped to files but got no results, fall back to unscoped
+    if (hasFileScope && !commitMessages && !fileChanges) {
+      try {
+        commitMessages = execSync(`git log --no-merges --format="%s" ${diffRef}..HEAD`, {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          timeout: 10000,
+        }).trim();
+      } catch {
+        commitMessages = '';
+      }
+      if (!commitMessages) {
+        try {
+          commitMessages = execSync(`git log --format="%s" ${diffRef}..HEAD`, {
+            cwd: workingDir,
+            encoding: 'utf-8',
+            timeout: 10000,
+          }).trim();
+        } catch {
+          commitMessages = '';
+        }
+      }
+      try {
+        const mergeBase = execSync(`git merge-base ${diffRef} HEAD`, {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          timeout: 5000,
+        }).trim();
+        fileChanges = execSync(`git diff --stat ${mergeBase} HEAD`, {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          timeout: 10000,
+        }).trim();
+        const rawDiff = execSync(`git diff --compact-summary ${mergeBase} HEAD`, {
+          cwd: workingDir,
+          encoding: 'utf-8',
+          timeout: 10000,
+        }).trim();
+        diffSample = rawDiff.length > 3000 ? rawDiff.substring(0, 3000) + '\n...(truncated)' : rawDiff;
+      } catch {
+        // keep existing values
+      }
     }
 
     // If we have neither commits nor file changes, nothing to summarize

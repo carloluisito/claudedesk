@@ -1,6 +1,6 @@
 {
   "name": "claudedesk",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "AI-powered development platform with CLI and web interface for Claude Code",
   "type": "module",
   "main": "dist/index.js",
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "dev": "concurrently --kill-others --kill-others-on-fail \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:alt": "cross-env CLAUDEDESK_PORT=9787 VITE_DEV_PORT=5174 npm run dev",
     "dev:server": "tsx watch src/index.ts",
     "dev:client": "vite",
     "build": "tsc && vite build",
@@ -58,6 +59,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.0",
+    "cross-env": "^10.1.0",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.10",
     "tsx": "^4.19.0",

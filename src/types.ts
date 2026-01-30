@@ -292,6 +292,79 @@ export interface GitCommit {
 }
 
 // =============================================================================
+// CI/CD Pipeline Monitoring Types
+// =============================================================================
+
+export const PipelineErrorCategorySchema = z.enum([
+  'test_failure',
+  'build_error',
+  'lint_error',
+  'type_error',
+  'runtime_error',
+  'timeout',
+  'unknown',
+]);
+export type PipelineErrorCategory = z.infer<typeof PipelineErrorCategorySchema>;
+
+export const WorkflowStepStatusSchema = z.enum([
+  'queued',
+  'in_progress',
+  'completed',
+  'failed',
+  'cancelled',
+  'skipped',
+]);
+
+export const WorkflowJobSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  steps: z.array(z.object({
+    name: z.string(),
+    status: z.string(),
+    conclusion: z.string().nullable(),
+    number: z.number(),
+  })).default([]),
+});
+export type WorkflowJob = z.infer<typeof WorkflowJobSchema>;
+
+export const WorkflowRunSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  headBranch: z.string(),
+  headSha: z.string(),
+  htmlUrl: z.string(),
+  jobs: z.array(WorkflowJobSchema).default([]),
+});
+export type WorkflowRun = z.infer<typeof WorkflowRunSchema>;
+
+export const PipelineMonitorSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  platform: z.enum(['github', 'gitlab']).default('github'),
+  owner: z.string(),
+  repo: z.string(),
+  branch: z.string(),
+  commitSha: z.string(),
+  workspaceId: z.string().optional(),
+  status: z.enum(['polling', 'success', 'failed', 'stalled', 'stopped', 'error']),
+  runs: z.array(WorkflowRunSchema).default([]),
+  errorCategory: PipelineErrorCategorySchema.optional(),
+  errorSummary: z.string().optional(),
+  failedJobId: z.number().optional(),
+  timestamps: z.object({
+    startedAt: z.string(),
+    lastPollAt: z.string().optional(),
+    completedAt: z.string().optional(),
+  }),
+  pollCount: z.number().default(0),
+});
+export type PipelineMonitor = z.infer<typeof PipelineMonitorSchema>;
+
+// =============================================================================
 // Skill System Types
 // =============================================================================
 

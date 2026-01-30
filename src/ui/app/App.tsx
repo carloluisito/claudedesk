@@ -4,12 +4,7 @@ import { useAppStore } from './store/appStore';
 import { api } from './lib/api';
 import { requestCache, CACHE_KEYS } from './lib/request-cache';
 import Auth from './screens/AuthV2';
-import Home from './screens/Home';
-import Terminal from './screens/TerminalV2';
 import { MissionControl } from './components/mission';
-import RunPage from './screens/RunPage';
-import ReviewChanges from './screens/ReviewChangesV2';
-import PreShipReview from './screens/PreShipReviewV2';
 import Settings from './screens/Settings';
 import Workspaces from './screens/settings/Workspaces';
 import Integrations from './screens/settings/Integrations';
@@ -27,7 +22,7 @@ interface SetupStatus {
 }
 
 // Pages that should NOT show the bottom navigation
-const HIDE_NAV_PATHS = ['/', '/terminal', '/mission', '/run', '/review-changes', '/pre-ship'];
+const HIDE_NAV_PATHS = ['/', '/mission'];
 
 function MobileLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -51,12 +46,7 @@ function AppRoutes() {
     <MobileLayout>
       <Routes>
         <Route path="/" element={<MissionControl />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/terminal" element={<Terminal />} />
         <Route path="/mission" element={<MissionControl />} />
-        <Route path="/run" element={<RunPage />} />
-        <Route path="/review-changes" element={<ReviewChanges />} />
-        <Route path="/pre-ship" element={<PreShipReview />} />
         <Route path="/settings" element={<Settings />}>
           <Route index element={<Navigate to="/settings/workspaces" replace />} />
           <Route path="workspaces" element={<Workspaces />} />

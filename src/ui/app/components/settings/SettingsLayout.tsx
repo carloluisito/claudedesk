@@ -7,12 +7,12 @@
 
 import { useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { Github, Container, Globe, Puzzle, Bot, ShieldCheck, Settings, ArrowLeft } from 'lucide-react';
+import { Github, Container, Globe, Puzzle, Bot, ShieldCheck, Settings, ArrowLeft, Activity } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { HStack, VStack } from '../../design-system/primitives/Stack';
 import { Text } from '../../design-system/primitives/Text';
 
-type SettingsTab = 'source-control' | 'services' | 'remote' | 'mcp' | 'claude';
+type SettingsTab = 'source-control' | 'services' | 'remote' | 'mcp' | 'claude' | 'cicd';
 
 interface TabConfig {
   id: SettingsTab;
@@ -51,6 +51,12 @@ const tabs: TabConfig[] = [
     label: 'Claude',
     icon: <Bot className="h-4 w-4" />,
     description: 'AI behavior and permissions',
+  },
+  {
+    id: 'cicd',
+    label: 'CI/CD',
+    icon: <Activity className="h-4 w-4" />,
+    description: 'Pipeline monitoring',
   },
 ];
 

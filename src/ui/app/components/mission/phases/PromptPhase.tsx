@@ -4,10 +4,9 @@
  * Displays the chat interface with Claude, including messages,
  * tool activity timeline, and the composer for input.
  */
-import { useRef, useCallback, RefObject } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, Loader2 } from 'lucide-react';
-import { cn } from '../../../lib/cn';
+import { useRef, useState, useEffect, useCallback, RefObject } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, ChevronDown } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -49,6 +48,33 @@ export function PromptPhase({
   onExport,
 }: PromptPhaseProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // Auto-scroll to bottom when new messages/activity arrive
+  useEffect(() => {
+    if (autoScroll && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [messages, isRunning, currentActivity, autoScroll]);
+
+  // Track scroll position to toggle auto-scroll
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    setAutoScroll(distanceFromBottom < 50);
+    setShowScrollButton(distanceFromBottom > 100);
+  }, []);
+
+  const handleScrollToBottom = useCallback(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      setAutoScroll(true);
+      setShowScrollButton(false);
+    }
+  }, []);
 
   if (isEmpty) {
     return (
@@ -80,10 +106,11 @@ export function PromptPhase({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
       {/* Messages area */}
       <div
         ref={containerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto py-4 space-y-1"
       >
         <div className="w-full px-4">
@@ -104,46 +131,27 @@ export function PromptPhase({
             );
           })}
 
-          {/* Current activity indicator */}
-          {isRunning && currentActivity && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20"
-            >
-              <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-blue-400 font-medium">
-                  {currentActivity.tool}
-                </p>
-                {currentActivity.description && (
-                  <p className="text-xs text-blue-400/70 truncate">
-                    {currentActivity.description}
-                  </p>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Thinking indicator when no current activity */}
-          {isRunning && !currentActivity && messages.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 px-4 py-3"
-            >
-              <div className="flex gap-1">
-                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-              <span className="text-sm text-white/40">Claude is thinking...</span>
-            </motion.div>
-          )}
+          {/* Scroll anchor — activity status is shown inline in MessageItem */}
 
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Scroll to bottom button */}
+      <AnimatePresence>
+        {showScrollButton && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={handleScrollToBottom}
+            className="absolute bottom-20 right-6 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors"
+            title="Scroll to bottom"
+          >
+            <ChevronDown className="h-4 w-4 text-white/70" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Composer */}
       <div className="w-full px-4 pb-4 pt-2 border-t border-white/5">{composer}</div>

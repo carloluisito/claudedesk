@@ -16,7 +16,6 @@ import { AgentsPanel } from '../../agents';
 import { UsageDashboard } from '../UsageDashboard';
 import { ToolApprovalModal } from '../ToolApprovalModal';
 import { NewSessionModal } from '../NewSessionModal';
-import { ShipModal } from '../ShipModal';
 import { StartAppModal } from '../StartAppModal';
 import { ExpandedInputModal } from '../ExpandedInputModal';
 import { SessionSearch } from '../SessionSearch';
@@ -80,15 +79,6 @@ interface OverlayManagerProps {
   // New session
   newSessionProps?: any; // Complex props passed through
 
-  // Ship
-  shipProps?: {
-    sessionId: string;
-    repoId?: string;
-    isMultiRepo?: boolean;
-    initialConfig?: any;
-    onFeedback?: (message: string) => void;
-  };
-
   // Start app
   startAppProps?: {
     repoId: string;
@@ -123,7 +113,6 @@ export function OverlayManager({
   onApproveMCPTool,
   onDenyMCPTool,
   newSessionProps,
-  shipProps,
   startAppProps,
   expandedInputProps,
 }: OverlayManagerProps) {
@@ -259,16 +248,6 @@ export function OverlayManager({
             isOpen={true}
             onClose={closeOverlay}
             {...newSessionProps}
-          />
-        );
-
-      case 'ship':
-        if (!shipProps) return null;
-        return (
-          <ShipModal
-            isOpen={true}
-            onClose={closeOverlay}
-            {...shipProps}
           />
         );
 

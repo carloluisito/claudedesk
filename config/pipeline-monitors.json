@@ -1,0 +1,18 @@
+[
+  {
+    "id": "42b52135-cf01-408c-a369-aade1399dc4d",
+    "sessionId": "ltpe174jbxtehqj1hyqgq",
+    "platform": "gitlab",
+    "owner": "ispade/mender",
+    "repo": "api",
+    "branch": "feature/deployment-v2",
+    "commitSha": "6de8e3d07d2355118b661a2ce6fb81d873bc86ee",
+    "status": "stalled",
+    "runs": [],
+    "timestamps": {
+      "startedAt": "2026-01-29T15:50:19.156Z",
+      "completedAt": "2026-01-29T16:20:36.834Z"
+    },
+    "pollCount": 61
+  }
+]

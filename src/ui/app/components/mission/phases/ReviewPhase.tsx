@@ -4,7 +4,7 @@
  * Displays a file tree of changed files, diff viewer for selected file,
  * and approval controls for the review workflow.
  */
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -17,6 +17,9 @@ import {
   ChevronDown,
   Eye,
   AlertTriangle,
+  Undo2,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { api } from '../../../lib/api';
@@ -36,6 +39,9 @@ interface ReviewPhaseProps {
   files: FileChange[];
   onFileApprove: (path: string) => void;
   onApproveAll: () => void;
+  onClearAll: () => void;
+  onDiscardFile: (path: string) => void;
+  onDeleteFile: (path: string) => void;
   onNavigateToShip: () => void;
 }
 
@@ -45,6 +51,9 @@ export function ReviewPhase({
   files,
   onFileApprove,
   onApproveAll,
+  onClearAll,
+  onDiscardFile,
+  onDeleteFile,
   onNavigateToShip,
 }: ReviewPhaseProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(
@@ -53,6 +62,36 @@ export function ReviewPhase({
   const [diff, setDiff] = useState<string>('');
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [confirmingAction, setConfirmingAction] = useState<{ path: string; action: 'discard' | 'delete' } | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startConfirm = useCallback((path: string, action: 'discard' | 'delete') => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmingAction({ path, action });
+    confirmTimerRef.current = setTimeout(() => setConfirmingAction(null), 3000);
+  }, []);
+
+  const cancelConfirm = useCallback(() => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmingAction(null);
+  }, []);
+
+  const executeConfirm = useCallback(() => {
+    if (!confirmingAction) return;
+    if (confirmingAction.action === 'discard') {
+      onDiscardFile(confirmingAction.path);
+    } else {
+      onDeleteFile(confirmingAction.path);
+    }
+    setConfirmingAction(null);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+  }, [confirmingAction, onDiscardFile, onDeleteFile]);
+
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    };
+  }, []);
 
   // Calculate approval progress
   const approvedCount = files.filter((f) => f.approved).length;
@@ -175,30 +214,96 @@ export function ReviewPhase({
 
               <AnimatePresence>
                 {(dir === '.' || expandedDirs.has(dir) || !expandedDirs.size) &&
-                  dirFiles.map((file) => (
-                    <motion.button
-                      key={file.path}
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      onClick={() => setSelectedFile(file.path)}
-                      className={cn(
-                        'flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-left transition-colors',
-                        selectedFile === file.path
-                          ? 'bg-white/10 ring-1 ring-white/20'
-                          : 'hover:bg-white/5',
-                        dir !== '.' && 'ml-3'
-                      )}
-                    >
-                      {getFileIcon(file.status)}
-                      <span className="flex-1 text-sm text-white/80 truncate font-mono">
-                        {file.path.split('/').pop()}
-                      </span>
-                      {file.approved && (
-                        <Check className="h-3.5 w-3.5 text-emerald-400" />
-                      )}
-                    </motion.button>
-                  ))}
+                  dirFiles.map((file) => {
+                    const isConfirming = confirmingAction?.path === file.path;
+                    const canDiscard = file.status === 'modified' || file.status === 'deleted';
+                    const canDelete = file.status === 'added';
+
+                    return (
+                      <motion.div
+                        key={file.path}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className={cn(
+                          'group flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer',
+                          selectedFile === file.path
+                            ? 'bg-white/10 ring-1 ring-white/20'
+                            : 'hover:bg-white/5',
+                          dir !== '.' && 'ml-3'
+                        )}
+                        onClick={() => setSelectedFile(file.path)}
+                      >
+                        {getFileIcon(file.status)}
+                        <span className="flex-1 text-sm text-white/80 truncate font-mono">
+                          {file.path.split('/').pop()}
+                        </span>
+
+                        {isConfirming ? (
+                          <span className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={executeConfirm}
+                              className="text-[10px] font-medium text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                            >
+                              Confirm?
+                            </button>
+                            <button
+                              onClick={cancelConfirm}
+                              className="p-0.5 text-white/40 hover:text-white/60 transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ) : (
+                          <>
+                            {/* Static approved check — visible when not hovering */}
+                            {file.approved && (
+                              <Check className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0 group-hover:hidden" />
+                            )}
+
+                            {/* Hover action icons */}
+                            <span
+                              className={cn(
+                                'items-center gap-0.5 flex-shrink-0 hidden group-hover:flex',
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => onFileApprove(file.path)}
+                                className={cn(
+                                  'p-1 rounded transition-colors',
+                                  file.approved
+                                    ? 'text-emerald-400 hover:text-emerald-300'
+                                    : 'text-white/30 hover:text-emerald-400'
+                                )}
+                                title={file.approved ? 'Unapprove' : 'Approve'}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              {canDiscard && (
+                                <button
+                                  onClick={() => startConfirm(file.path, 'discard')}
+                                  className="p-1 rounded text-white/30 hover:text-red-400 transition-colors"
+                                  title="Discard changes"
+                                >
+                                  <Undo2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => startConfirm(file.path, 'delete')}
+                                  className="p-1 rounded text-white/30 hover:text-red-400 transition-colors"
+                                  title="Delete file"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </span>
+                          </>
+                        )}
+                      </motion.div>
+                    );
+                  })}
               </AnimatePresence>
             </div>
           ))}
@@ -206,28 +311,48 @@ export function ReviewPhase({
 
         {/* Actions */}
         <div className="p-3 border-t border-white/10 space-y-2">
-          <button
-            onClick={onApproveAll}
-            disabled={allApproved}
-            className={cn(
-              'w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              allApproved
-                ? 'bg-emerald-500/20 text-emerald-400 cursor-default'
-                : 'bg-white/10 text-white hover:bg-white/15'
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onApproveAll}
+              disabled={allApproved}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                allApproved
+                  ? 'bg-emerald-500/20 text-emerald-400 cursor-default'
+                  : 'bg-white/10 text-white hover:bg-white/15'
+              )}
+            >
+              <CheckCheck className="h-4 w-4" />
+              {allApproved ? 'All Approved' : 'Approve All'}
+            </button>
+            {approvedCount > 0 && !allApproved && (
+              <button
+                onClick={onClearAll}
+                className="flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+                Clear
+              </button>
             )}
-          >
-            <CheckCheck className="h-4 w-4" />
-            {allApproved ? 'All Approved' : 'Approve All'}
-          </button>
+          </div>
 
           {allApproved && (
-            <button
-              onClick={onNavigateToShip}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
-            >
-              Ready to Ship
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <>
+              <button
+                onClick={onClearAll}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors"
+              >
+                <X className="h-3 w-3" />
+                Clear All Approvals
+              </button>
+              <button
+                onClick={onNavigateToShip}
+                className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
+              >
+                Ready to Ship
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -235,32 +360,75 @@ export function ReviewPhase({
       {/* Diff Viewer - Center Panel (hidden on mobile — file tree is primary) */}
       <div className="hidden sm:flex flex-1 flex-col rounded-xl bg-white/[0.03] ring-1 ring-white/10 overflow-hidden min-w-0">
         {/* File header */}
-        {selectedFile && (
-          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              {getFileIcon(files.find((f) => f.path === selectedFile)?.status || 'modified')}
-              <span className="text-sm font-mono text-white/80 truncate">
-                {selectedFile}
-              </span>
+        {selectedFile && (() => {
+          const selectedFileData = files.find((f) => f.path === selectedFile);
+          const status = selectedFileData?.status || 'modified';
+          const isHeaderConfirming = confirmingAction?.path === selectedFile;
+          const headerCanDiscard = status === 'modified' || status === 'deleted';
+          const headerCanDelete = status === 'added';
+
+          return (
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                {getFileIcon(status)}
+                <span className="text-sm font-mono text-white/80 truncate">
+                  {selectedFile}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isHeaderConfirming ? (
+                  <span className="flex items-center gap-2">
+                    <button
+                      onClick={executeConfirm}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                    >
+                      Confirm {confirmingAction.action === 'discard' ? 'Discard' : 'Delete'}?
+                    </button>
+                    <button
+                      onClick={cancelConfirm}
+                      className="p-1.5 rounded-lg text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                ) : (
+                  <>
+                    {headerCanDiscard && (
+                      <button
+                        onClick={() => startConfirm(selectedFile, 'discard')}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Undo2 className="h-4 w-4" />
+                        Discard
+                      </button>
+                    )}
+                    {headerCanDelete && (
+                      <button
+                        onClick={() => startConfirm(selectedFile, 'delete')}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </button>
+                    )}
+                  </>
+                )}
+                <button
+                  onClick={() => onFileApprove(selectedFile)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                    selectedFileData?.approved
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : 'bg-white/10 text-white hover:bg-white/15'
+                  )}
+                >
+                  <Check className="h-4 w-4" />
+                  {selectedFileData?.approved ? 'Approved' : 'Approve'}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => {
-                onFileApprove(selectedFile);
-              }}
-              className={cn(
-                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                files.find((f) => f.path === selectedFile)?.approved
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-white/10 text-white hover:bg-white/15'
-              )}
-            >
-              <Check className="h-4 w-4" />
-              {files.find((f) => f.path === selectedFile)?.approved
-                ? 'Approved'
-                : 'Approve'}
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Diff content */}
         <div className="flex-1 overflow-auto p-4">

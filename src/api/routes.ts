@@ -557,3 +557,4 @@ apiRouter.use('/mcp', mcpRouter);
 
 // Mount system router for updates and cache management
 apiRouter.use('/system', systemRouter);
+

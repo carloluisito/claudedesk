@@ -60,6 +60,7 @@ interface ShipPhaseProps {
   sessionId: string;
   repoId?: string;
   isMultiRepo?: boolean;
+  reviewFiles?: string[];
   onSuccess?: (result: { prUrl?: string; commitHash?: string }) => void;
   onGoBack?: () => void;
 }
@@ -68,6 +69,7 @@ export function ShipPhase({
   sessionId,
   repoId,
   isMultiRepo = false,
+  reviewFiles,
   onSuccess,
   onGoBack,
 }: ShipPhaseProps) {
@@ -94,13 +96,23 @@ export function ShipPhase({
   } | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
 
-  // Detect warnings
+  // Derive whether existing PR is still actionable
+  const isExistingPRActive = summary?.existingPR && summary.existingPR.state === 'open';
+  const isExistingPRClosed = summary?.existingPR && (summary.existingPR.state === 'merged' || summary.existingPR.state === 'closed');
+
+  // Detect warnings - scope to review files when available
   const warnings = useMemo<SafetyWarning[]>(() => {
     if (!summary) return [];
     const w: SafetyWarning[] = [];
     const seen = new Set<string>();
 
-    for (const file of summary.files) {
+    // Use review files if available, otherwise fall back to full summary
+    const reviewFileSet = reviewFiles && reviewFiles.length > 0 ? new Set(reviewFiles) : null;
+    const filesToCheck = reviewFileSet
+      ? summary.files.filter(f => reviewFileSet.has(f.path))
+      : summary.files;
+
+    for (const file of filesToCheck) {
       const path = file.path.toLowerCase();
 
       if ((path.includes('auth') || path.includes('login') || path.includes('password')) && !seen.has('auth')) {
@@ -143,6 +155,21 @@ export function ShipPhase({
   const hasBlockingWarnings = warnings.some(
     (w) => w.severity === 'critical' && !w.canDismiss && !dismissedWarnings.has(w.id)
   );
+
+  // Scoped file stats - use review files when available
+  const scopedStats = useMemo(() => {
+    if (!summary) return { fileCount: 0, insertions: 0, deletions: 0 };
+    if (!reviewFiles || reviewFiles.length === 0) {
+      return { fileCount: summary.files.length, insertions: summary.totalInsertions, deletions: summary.totalDeletions };
+    }
+    const reviewSet = new Set(reviewFiles);
+    const scoped = summary.files.filter(f => reviewSet.has(f.path));
+    return {
+      fileCount: scoped.length,
+      insertions: scoped.reduce((sum, f) => sum + f.insertions, 0),
+      deletions: scoped.reduce((sum, f) => sum + f.deletions, 0),
+    };
+  }, [summary, reviewFiles]);
 
   // Build URL helper
   const buildUrl = useCallback(
@@ -208,10 +235,11 @@ export function ShipPhase({
     if (!sessionId) return;
     setGenerating(true);
     try {
-      const body: { targetBranch: string; repoId?: string } = {
+      const body: { targetBranch: string; repoId?: string; files?: string[] } = {
         targetBranch: targetBranch || summary?.baseBranch || 'main',
       };
       if (repoId) body.repoId = repoId;
+      if (reviewFiles && reviewFiles.length > 0) body.files = reviewFiles;
 
       const data = await api<{ title: string; description: string }>(
         'POST',
@@ -400,7 +428,11 @@ export function ShipPhase({
               </div>
 
               <p className="mt-6 text-xs text-white/30">
-                No uncommitted changes. Push new commits to update this PR.
+                {summary.existingPR.state === 'merged'
+                  ? 'This PR has been merged. Make changes to create a new PR.'
+                  : summary.existingPR.state === 'closed'
+                  ? 'This PR was closed. Make changes to create a new PR.'
+                  : 'No uncommitted changes. Push new commits to update this PR.'}
               </p>
             </motion.div>
           ) : (
@@ -530,10 +562,10 @@ export function ShipPhase({
         {/* Stats */}
         <div className="rounded-xl bg-white/[0.03] ring-1 ring-white/10 p-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-white/50">{summary?.files.length} files</span>
+            <span className="text-white/50">{scopedStats.fileCount} files</span>
             <div className="flex items-center gap-3">
-              <span className="text-emerald-400 font-mono">+{summary?.totalInsertions}</span>
-              <span className="text-red-400 font-mono">-{summary?.totalDeletions}</span>
+              <span className="text-emerald-400 font-mono">+{scopedStats.insertions}</span>
+              <span className="text-red-400 font-mono">-{scopedStats.deletions}</span>
             </div>
           </div>
         </div>
@@ -619,7 +651,9 @@ export function ShipPhase({
                 </a>
               </div>
               <p className="mt-2 text-xs text-white/40">
-                New commits will be pushed to the existing PR.
+                {isExistingPRClosed
+                  ? `Previous PR was ${summary.existingPR.state}. A new PR will be created.`
+                  : 'New commits will be pushed to the existing PR.'}
               </p>
             </div>
           )}
@@ -701,7 +735,7 @@ export function ShipPhase({
             ) : (
               <>
                 <Rocket className="h-4 w-4" />
-                {summary?.existingPR && shouldPush ? 'Push to Existing PR' : 'Ship Changes'}
+                {isExistingPRActive && shouldPush ? 'Push to Existing PR' : shouldCreatePR ? 'Create PR' : 'Ship Changes'}
               </>
             )}
           </button>

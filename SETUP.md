@@ -66,6 +66,10 @@ Options:
   -d, --data-dir <path>  Data directory for config and artifacts
   --skip-wizard          Skip the initial setup wizard
   --allow-remote         Allow remote network access
+  --no-open              Don't auto-open the browser on startup
+  --check-update         Check for a newer version and exit
+  --update               Check and install update if available, then exit
+  --clear-cache [type]   Clear cached data and exit (types: sessions, artifacts, worktrees, usage, all)
   -h, --help             Show help message
   -v, --version          Show version number
 ```
@@ -100,6 +104,8 @@ Inside the data directory:
 - `config/settings.json` - App settings
 - `config/repos.json` - Repository definitions
 - `config/workspaces.json` - Workspace configurations
+- `config/mcp-servers.json` - MCP server configurations
+- `config/pipeline-monitors.json` - CI/CD pipeline monitor state
 - `config/skills/` - Custom Claude skills
 
 ## Mobile Access

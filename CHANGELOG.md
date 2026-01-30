@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-01-30
+
+### Added
+
+#### CI/CD Pipeline Monitoring
+- Automatic monitoring of GitHub Actions and GitLab CI pipelines after shipping code
+- Real-time pipeline status via WebSocket (`pipeline:status`, `pipeline:complete`, `pipeline:stalled`, `pipeline:error`)
+- Error categorization: test_failure, build_error, lint_error, type_error, timeout
+- "Fix CI" prompt composition with log excerpts (last 200 lines)
+- Exponential backoff polling (10s → 15s → 22s → 30s cap)
+- Max 10 concurrent monitors, 90s stall detection
+- Persistent state in `config/pipeline-monitors.json`
+- Settings UI panel: Settings > CI/CD (auto-monitor toggle, poll interval, max duration, notifications)
+- Token resolution: GitHub (`gh auth token`, `GITHUB_TOKEN`), GitLab (`glab auth token`, `GITLAB_TOKEN`, workspace OAuth)
+
+#### System Management
+- Auto-open browser on startup with `--no-open` flag to disable
+- Update checker with configurable auto-check interval (default: 6 hours)
+- `--check-update` CLI flag for manual version check
+- `--update` CLI flag to install updates (auto for global npm, manual instructions for other methods)
+- Cache management system with `--clear-cache [type]` CLI flag (sessions, artifacts, worktrees, usage, all)
+- System API routes (`/api/system/*`) for update checking and cache management
+- Cache management UI in Settings > System
+- WebSocket `system:update-available` event for update notifications
+
+### Fixed
+- Newly created files showing "No changes" in Review phase instead of file content. The `file-diff` endpoint now falls back to `git diff --cached` and direct file read for untracked/new files, formatting content as a unified diff with all lines as additions.
+- Removed redundant duplicate loading indicators (blue activity bar and bouncing dots) from PromptPhase — activity status is already shown inline in MessageItem.
+
+## [3.1.0] - 2026-01-29
+
+### Added
+- Mobile responsive layout improvements for mission phases
+- Updated favicon
+
 ## [3.0.0] - 2026-01-29
 
 ### Major Release
@@ -218,6 +253,8 @@ Complete UI/UX redesign focused on reducing modal fatigue, improving code mainta
 - SECURITY policy for vulnerability reporting
 - ARCHITECTURE overview
 
+[3.3.0]: https://github.com/carloluisito/claudedesk/releases/tag/v3.3.0
+[3.1.0]: https://github.com/carloluisito/claudedesk/releases/tag/v3.1.0
 [3.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v3.0.0
 [2.0.1]: https://github.com/carloluisito/claudedesk/releases/tag/v2.0.1
 [2.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v2.0.0

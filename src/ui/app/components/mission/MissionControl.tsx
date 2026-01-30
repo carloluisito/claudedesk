@@ -150,7 +150,7 @@ export default function MissionControl() {
     if (!activeSession?.gitStatus?.files) return [];
     return activeSession.gitStatus.files.map((f: any) => ({
       path: f.path || f,
-      status: f.status === 'created' ? 'added' : f.status || 'modified',
+      status: (f.status === 'created' || f.status === 'untracked') ? 'added' : f.status || 'modified',
       insertions: f.insertions || 0,
       deletions: f.deletions || 0,
       approved: approvedFiles.has(f.path || f),
@@ -272,6 +272,44 @@ export default function MissionControl() {
   const handleApproveAll = useCallback(() => {
     setApprovedFiles(new Set(fileChanges.map((f) => f.path)));
   }, [fileChanges]);
+
+  const handleClearAll = useCallback(() => {
+    setApprovedFiles(new Set());
+  }, []);
+
+  const handleDiscardFile = useCallback(async (path: string) => {
+    if (!activeSessionId) return;
+    try {
+      const body: { files: string[]; repoId?: string } = { files: [path] };
+      if (activeSession?.repoIds?.[0]) body.repoId = activeSession.repoIds[0];
+      await api('POST', `/terminal/sessions/${activeSessionId}/git-discard`, body);
+      setApprovedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      fetchGitStatus(activeSessionId);
+    } catch (err) {
+      console.error('Failed to discard file:', err);
+    }
+  }, [activeSessionId, activeSession?.repoIds, fetchGitStatus]);
+
+  const handleDeleteFile = useCallback(async (path: string) => {
+    if (!activeSessionId) return;
+    try {
+      const body: { file: string; repoId?: string } = { file: path };
+      if (activeSession?.repoIds?.[0]) body.repoId = activeSession.repoIds[0];
+      await api('POST', `/terminal/sessions/${activeSessionId}/git-delete-untracked`, body);
+      setApprovedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      fetchGitStatus(activeSessionId);
+    } catch (err) {
+      console.error('Failed to delete file:', err);
+    }
+  }, [activeSessionId, activeSession?.repoIds, fetchGitStatus]);
 
   // Composer component
   const composerElement = (
@@ -546,6 +584,9 @@ export default function MissionControl() {
                 files={fileChanges}
                 onFileApprove={handleFileApprove}
                 onApproveAll={handleApproveAll}
+                onClearAll={handleClearAll}
+                onDiscardFile={handleDiscardFile}
+                onDeleteFile={handleDeleteFile}
                 onNavigateToShip={() => setActivePhase('ship')}
               />
             </motion.div>
@@ -564,6 +605,7 @@ export default function MissionControl() {
                 sessionId={activeSessionId!}
                 repoId={activeSession.repoIds?.[0]}
                 isMultiRepo={activeSession.isMultiRepo}
+                reviewFiles={fileChanges.map(f => f.path)}
                 onSuccess={() => {
                   setApprovedFiles(new Set());
                   // Invalidate cached git status and re-fetch so Review/Ship

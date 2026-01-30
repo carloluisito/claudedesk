@@ -157,6 +157,19 @@ export const SettingsSchema = z.object({
     dismissedVersion: z.string().optional(),
   }).default({}),
 
+  // CI/CD Pipeline Monitoring settings
+  cicd: z.object({
+    autoMonitor: z.boolean().default(true),
+    pollIntervalMs: z.number().min(5000).max(60000).default(10000),
+    maxPollDurationMs: z.number().min(300000).max(3600000).default(1800000),
+    showNotifications: z.boolean().default(true),
+  }).default({
+    autoMonitor: true,
+    pollIntervalMs: 10000,
+    maxPollDurationMs: 1800000,
+    showNotifications: true,
+  }),
+
   // MCP (Model Context Protocol) settings
   mcp: z.object({
     globalEnabled: z.boolean().default(true),
@@ -235,6 +248,12 @@ const DEFAULT_SETTINGS: Settings = {
     },
     networkName: 'claudedesk-dev-network',
   },
+  cicd: {
+    autoMonitor: true,
+    pollIntervalMs: 10000,
+    maxPollDurationMs: 1800000,
+    showNotifications: true,
+  },
   tunnel: {
     enabled: false,
     autoStart: false,
@@ -305,6 +324,7 @@ export class SettingsManager {
             redis: { ...DEFAULT_SETTINGS.docker.services.redis, ...parsed.docker?.services?.redis },
           },
         },
+        cicd: { ...DEFAULT_SETTINGS.cicd, ...parsed.cicd },
         tunnel: { ...DEFAULT_SETTINGS.tunnel, ...parsed.tunnel },
         update: { ...DEFAULT_SETTINGS.update, ...parsed.update },
         mcp: { ...DEFAULT_SETTINGS.mcp, ...parsed.mcp },
@@ -411,6 +431,10 @@ export class SettingsManager {
     return { ...this.settings.update };
   }
 
+  getCicd(): Settings['cicd'] {
+    return { ...this.settings.cicd };
+  }
+
   getMcp(): Settings['mcp'] {
     return { ...this.settings.mcp };
   }
@@ -465,6 +489,9 @@ export class SettingsManager {
           redis: { ...this.settings.docker.services.redis, ...updates.docker.services?.redis },
         },
       };
+    }
+    if (updates.cicd) {
+      this.settings.cicd = { ...this.settings.cicd, ...updates.cicd };
     }
     if (updates.tunnel) {
       this.settings.tunnel = { ...this.settings.tunnel, ...updates.tunnel };
@@ -548,6 +575,12 @@ export class SettingsManager {
     this.settings.update = { ...this.settings.update, ...updates };
     this.save();
     return this.getUpdate();
+  }
+
+  updateCicd(updates: Partial<Settings['cicd']>): Settings['cicd'] {
+    this.settings.cicd = { ...this.settings.cicd, ...updates };
+    this.save();
+    return this.getCicd();
   }
 
   updateMcp(updates: Partial<Settings['mcp']>): Settings['mcp'] {

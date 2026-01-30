@@ -119,6 +119,11 @@ export interface TerminalSession {
   branch?: string;                // Branch name for the worktree
   baseBranch?: string;            // Branch worktree was created from
   ownsWorktree?: boolean;         // true = session created this worktree (should delete on close)
+
+  // CI/CD Pipeline Monitoring
+  pipelineMonitorId?: string;     // Active pipeline monitor ID
+  linkedSessionId?: string;       // Linked session (e.g., Fix CI session)
+  fixCIContext?: string;          // Context for Fix CI sessions
 }
 
 // Helper to get primary repo ID for backward compatibility
@@ -584,6 +589,13 @@ class TerminalSessionManager {
 
   getSession(sessionId: string): TerminalSession | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  updateSessionField<K extends keyof TerminalSession>(sessionId: string, field: K, value: TerminalSession[K]): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    (session as unknown as Record<string, unknown>)[field as string] = value;
+    this.saveSessions();
   }
 
   getAllSessions(): TerminalSession[] {

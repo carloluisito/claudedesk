@@ -25,7 +25,6 @@ export type ActiveOverlay =
   | 'usage-dashboard'
   | 'mcp-approval'
   | 'new-session'
-  | 'ship'
   | 'start-app'
   | 'expanded-input'
   | 'session-search'
@@ -162,7 +161,6 @@ export interface TerminalUIState {
   openAgents: () => void;
   openNewSession: () => void;
   openExport: () => void;
-  openShip: () => void;
 
   // Reset all UI state
   reset: () => void;
@@ -383,7 +381,6 @@ export const useTerminalUIStore = create<TerminalUIState>()(
     openAgents: () => get().openOverlay('agents'),
     openNewSession: () => get().openOverlay('new-session'),
     openExport: () => get().openOverlay('export'),
-    openShip: () => get().openOverlay('ship'),
 
     // Reset
     reset: () => {

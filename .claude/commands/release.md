@@ -20,7 +20,6 @@ When the user runs `/release`, follow these steps:
 
 3. **Update versions**
    - Update `version` in `package.json`
-   - Update version in `src/ui/app/screens/Launcher.tsx` (the hardcoded UI version)
 
 4. **Commit and tag**
    - Stage the version changes

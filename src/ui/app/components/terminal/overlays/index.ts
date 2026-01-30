@@ -11,7 +11,6 @@ export { ExportModal } from '../ExportModal';
 export { UsageDashboard } from '../UsageDashboard';
 export { ToolApprovalModal } from '../ToolApprovalModal';
 export { NewSessionModal } from '../NewSessionModal';
-export { ShipModal } from '../ShipModal';
 export { StartAppModal } from '../StartAppModal';
 export { ExpandedInputModal } from '../ExpandedInputModal';
 export { SessionSearch } from '../SessionSearch';

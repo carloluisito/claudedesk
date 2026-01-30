@@ -898,6 +898,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
               message.error as string | undefined
             );
             break;
+
         }
       } catch (error) {
         console.error('[Terminal] Failed to parse message:', error);
