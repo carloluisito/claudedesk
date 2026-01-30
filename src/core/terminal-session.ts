@@ -73,6 +73,7 @@ export interface ChatMessage {
   attachments?: MessageAttachment[];
   agentId?: string;      // Agent used for this message (if any)
   agentName?: string;    // Display name of the agent
+  agentChain?: string[]; // Ordered agent IDs for chain execution (user messages)
 }
 
 export interface SearchResult {
@@ -341,13 +342,17 @@ class TerminalSessionManager {
 
     // Send message to Claude
     wsManager.on('message', async (client, message) => {
-      const { sessionId, content, attachments, agentId } = message;
+      const { sessionId, content, attachments, agentId, agentChain } = message;
       if (sessionId && content && typeof content === 'string') {
         // Validate attachments if provided
         const validAttachments = Array.isArray(attachments) ? attachments as MessageAttachment[] : undefined;
+        // Validate agentChain if provided (takes precedence over agentId)
+        const validChain = Array.isArray(agentChain) && agentChain.length > 0 && agentChain.every((id: unknown) => typeof id === 'string')
+          ? agentChain as string[]
+          : undefined;
         // Validate agentId if provided
-        const validAgentId = typeof agentId === 'string' ? agentId : undefined;
-        await this.sendMessage(sessionId, content, validAttachments, validAgentId);
+        const validAgentId = !validChain && typeof agentId === 'string' ? agentId : undefined;
+        await this.sendMessage(sessionId, content, validAttachments, validAgentId, validChain);
       }
     });
 
@@ -706,10 +711,19 @@ class TerminalSessionManager {
     return session;
   }
 
-  async sendMessage(sessionId: string, content: string, attachments?: MessageAttachment[], agentId?: string): Promise<void> {
+  async sendMessage(sessionId: string, content: string, attachments?: MessageAttachment[], agentId?: string, agentChain?: string[]): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    // Route to chain execution if agentChain provided with 2+ agents
+    if (agentChain && agentChain.length > 1) {
+      return this.sendChainMessage(sessionId, content, attachments, agentChain);
+    }
+    // Single-agent chain treated as regular single agent
+    if (agentChain && agentChain.length === 1) {
+      agentId = agentChain[0];
     }
 
     // If session is running, queue the message instead of throwing error
@@ -753,6 +767,7 @@ class TerminalSessionManager {
       content,
       timestamp: new Date(),
       attachments,
+      ...(agentId ? { agentId, agentName: agentId } : {}),
     };
     session.messages.push(userMessage);
     session.lastActivityAt = new Date();
@@ -797,6 +812,12 @@ class TerminalSessionManager {
 
     // Build prompt with conversation context
     let prompt = this.buildPromptWithContext(session, content);
+
+    // Prepend agent instruction into the prompt so Claude uses the correct agent
+    if (agentId) {
+      const agentInstruction = `Use the "${agentId}" agent for this task.\n\n`;
+      prompt = agentInstruction + prompt;
+    }
 
     // Add attachment context if files were attached
     if (attachments && attachments.length > 0) {
@@ -1050,6 +1071,323 @@ class TerminalSessionManager {
 
       // Process next queued message if any (only on success/idle and NOT recently stopped)
       // If stopped, user must explicitly resume the queue
+      if (session.status === 'idle' && session.messageQueue.length > 0 && !session.wasRecentlyStopped) {
+        setTimeout(() => this.processNextInQueue(sessionId), 100);
+      }
+    }
+  }
+
+  /**
+   * Execute a chain of agents sequentially.
+   * Each agent's output becomes context for the next agent.
+   * Only the immediately preceding agent's output is passed forward.
+   */
+  private async sendChainMessage(
+    sessionId: string,
+    content: string,
+    attachments: MessageAttachment[] | undefined,
+    agentChain: string[]
+  ): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    // If session is running, queue the message
+    if (session.status === 'running') {
+      this.queueMessage(sessionId, content, session.mode, attachments);
+      return;
+    }
+
+    // Check active process limit
+    const activeCount = this.getActiveProcessCount();
+    if (activeCount >= MAX_ACTIVE_CLAUDE_PROCESSES) {
+      this.queueMessage(sessionId, content, session.mode, attachments);
+      wsManager.broadcastToSession(sessionId, {
+        type: 'info',
+        message: `Message queued. ${activeCount} Claude processes are currently running.`,
+      });
+      return;
+    }
+
+    // Get primary repo
+    const primaryRepoId = session.repoIds[0];
+    const repo = repoRegistry.get(primaryRepoId);
+    if (!repo) {
+      throw new Error(`Repository not found: ${primaryRepoId}`);
+    }
+
+    // Clear wasRecentlyStopped flag
+    session.wasRecentlyStopped = false;
+
+    // Add user message with chain info
+    const userMessage: ChatMessage = {
+      id: this.generateId(),
+      role: 'user',
+      content,
+      timestamp: new Date(),
+      attachments,
+      agentChain,
+    };
+    session.messages.push(userMessage);
+    session.lastActivityAt = new Date();
+    session.status = 'running';
+
+    wsManager.broadcastToSession(sessionId, { type: 'message', message: userMessage });
+    wsManager.broadcastToSession(sessionId, { type: 'status', status: 'running' });
+
+    // Record usage for all agents in chain
+    for (const agId of agentChain) {
+      agentUsageManager.recordAgentUsage(agId, agId);
+    }
+
+    // Create assistant message placeholder with chain metadata
+    const assistantMessage: ChatMessage = {
+      id: this.generateId(),
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      isStreaming: true,
+      agentId: agentChain[0],
+      agentName: agentChain[0],
+    };
+    session.messages.push(assistantMessage);
+
+    wsManager.broadcastToSession(sessionId, { type: 'message', message: assistantMessage });
+
+    // Create artifacts directory
+    const artifactsDir = join(getTerminalArtifactsDir(), sessionId);
+    if (!existsSync(artifactsDir)) {
+      mkdirSync(artifactsDir, { recursive: true });
+    }
+
+    // Determine working directory
+    const workingDir = session.worktreeMode && session.worktreePath
+      ? session.worktreePath
+      : repo.path;
+
+    // Chain execution state
+    let previousAgentOutput = '';
+    let chainCompleted = true;
+    let completedSegments = 0;
+
+    try {
+      for (let segIdx = 0; segIdx < agentChain.length; segIdx++) {
+        const currentAgentId = agentChain[segIdx];
+
+        // Update assistant message to reflect current agent
+        assistantMessage.agentId = currentAgentId;
+        assistantMessage.agentName = currentAgentId;
+
+        // Broadcast chain-segment-start
+        wsManager.broadcastToSession(sessionId, {
+          type: 'chain-segment-start',
+          messageId: assistantMessage.id,
+          segmentIndex: segIdx,
+          agentId: currentAgentId,
+          agentName: currentAgentId,
+          totalSegments: agentChain.length,
+        });
+
+        // Build prompt for this segment
+        let segmentPrompt = this.buildPromptWithContext(session, content);
+
+        // Add agent instruction
+        segmentPrompt = `Use the "${currentAgentId}" agent for this task.\n\n` + segmentPrompt;
+
+        // Add previous agent's output as context (only immediately preceding)
+        if (segIdx > 0 && previousAgentOutput) {
+          const prevAgentId = agentChain[segIdx - 1];
+          // Truncate to 100k chars to avoid context overflow
+          const truncatedOutput = previousAgentOutput.length > 100000
+            ? previousAgentOutput.slice(0, 100000) + '\n\n[Output truncated - exceeded 100,000 characters]'
+            : previousAgentOutput;
+          segmentPrompt = `## Output from previous agent (@${prevAgentId})\n\n${truncatedOutput}\n\n---\n\n` + segmentPrompt;
+        }
+
+        // Add attachment context (only for first segment)
+        if (segIdx === 0 && attachments && attachments.length > 0) {
+          segmentPrompt = this.buildAttachmentContext(attachments) + '\n\n' + segmentPrompt;
+        }
+
+        // Add safety instructions
+        segmentPrompt = this.getSafetyInstructions() + '\n\n' + segmentPrompt;
+
+        // Plan mode wraps only the first agent
+        if (segIdx === 0 && session.mode === 'plan') {
+          segmentPrompt = claudeInvoker.generatePlanPrompt(segmentPrompt);
+        }
+
+        // Add worktree context
+        if (session.worktreeMode && session.branch) {
+          segmentPrompt = this.buildWorktreeContext(session) + '\n\n' + segmentPrompt;
+        }
+
+        // Execute this segment
+        let segmentOutput = '';
+        let segmentFailed = false;
+
+        try {
+          const result = await claudeInvoker.invoke({
+            repoPath: workingDir,
+            prompt: segmentPrompt,
+            artifactsDir,
+            resumeSessionId: session.claudeSessionId,
+            agentId: currentAgentId,
+            onProcessStart: (proc) => {
+              session.claudeProcess = proc;
+            },
+            onStreamEvent: (event: ClaudeStreamEvent) => {
+              if (event.type === 'text' && event.content) {
+                segmentOutput += event.content;
+                assistantMessage.content += event.content;
+
+                // Broadcast chunk with chain segment index
+                wsManager.broadcastToSession(sessionId, {
+                  type: 'chain-segment-chunk',
+                  messageId: assistantMessage.id,
+                  segmentIndex: segIdx,
+                  content: event.content,
+                });
+                // Also broadcast standard chunk for backward compat
+                wsManager.broadcastToSession(sessionId, {
+                  type: 'chunk',
+                  messageId: assistantMessage.id,
+                  content: event.content,
+                });
+              } else if (event.type === 'tool_use' && event.toolName) {
+                wsManager.broadcastToSession(sessionId, {
+                  type: 'activity',
+                  content: event.content,
+                  toolName: event.toolName,
+                });
+              } else if (event.type === 'result' && event.sessionId) {
+                if (!session.claudeSessionId) {
+                  session.claudeSessionId = event.sessionId;
+                }
+              }
+            },
+          });
+
+          if (!result.success) {
+            segmentFailed = true;
+            wsManager.broadcastToSession(sessionId, {
+              type: 'chain-segment-error',
+              messageId: assistantMessage.id,
+              segmentIndex: segIdx,
+              agentId: currentAgentId,
+              error: result.error || 'Agent execution failed',
+            });
+          }
+        } catch (err) {
+          segmentFailed = true;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          wsManager.broadcastToSession(sessionId, {
+            type: 'chain-segment-error',
+            messageId: assistantMessage.id,
+            segmentIndex: segIdx,
+            agentId: currentAgentId,
+            error: errMsg,
+          });
+        }
+
+        session.claudeProcess = undefined;
+
+        if (segmentFailed) {
+          chainCompleted = false;
+          break;
+        }
+
+        // Check if session was stopped/cancelled
+        if (session.wasRecentlyStopped) {
+          chainCompleted = false;
+          wsManager.broadcastToSession(sessionId, {
+            type: 'chain-segment-error',
+            messageId: assistantMessage.id,
+            segmentIndex: segIdx,
+            agentId: currentAgentId,
+            error: 'Chain cancelled by user',
+          });
+          break;
+        }
+
+        // Segment completed successfully
+        completedSegments++;
+        previousAgentOutput = segmentOutput;
+
+        wsManager.broadcastToSession(sessionId, {
+          type: 'chain-segment-complete',
+          messageId: assistantMessage.id,
+          segmentIndex: segIdx,
+          agentId: currentAgentId,
+          outputLength: segmentOutput.length,
+        });
+
+        // Add a visual separator in the message content between segments
+        if (segIdx < agentChain.length - 1) {
+          const separator = `\n\n---\n\n`;
+          assistantMessage.content += separator;
+          wsManager.broadcastToSession(sessionId, {
+            type: 'chunk',
+            messageId: assistantMessage.id,
+            content: separator,
+          });
+        }
+      }
+
+      // Chain complete
+      const chainStatus = chainCompleted ? 'completed'
+        : session.wasRecentlyStopped ? 'cancelled'
+        : 'partial';
+
+      assistantMessage.isStreaming = false;
+      session.status = 'idle';
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'chain-complete',
+        messageId: assistantMessage.id,
+        status: chainStatus,
+        completedSegments,
+        totalSegments: agentChain.length,
+      });
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'message-complete',
+        messageId: assistantMessage.id,
+        success: chainCompleted,
+      });
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'status',
+        status: 'idle',
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      assistantMessage.content += `\n\n**Chain Error:** ${errorMsg}`;
+      assistantMessage.isStreaming = false;
+      session.status = 'error';
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'chain-complete',
+        messageId: assistantMessage.id,
+        status: 'partial',
+        completedSegments,
+        totalSegments: agentChain.length,
+      });
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'error',
+        error: errorMsg,
+      });
+
+      wsManager.broadcastToSession(sessionId, {
+        type: 'status',
+        status: 'error',
+      });
+    } finally {
+      session.claudeProcess = undefined;
+      this.saveSessions();
+
       if (session.status === 'idle' && session.messageQueue.length > 0 && !session.wasRecentlyStopped) {
         setTimeout(() => this.processNextInQueue(sessionId), 100);
       }

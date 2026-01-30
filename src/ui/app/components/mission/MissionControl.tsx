@@ -317,9 +317,21 @@ export default function MissionControl() {
       value={input}
       onChange={setInput}
       onSend={() => {
-        handleSend(undefined, agents.selectedAgent?.id);
-        if (agents.selectedAgent) agents.addToRecentAgents(agents.selectedAgent);
-        agents.setSelectedAgent(null);
+        // Use chain if multiple agents selected, otherwise single agent
+        const chainIds = agents.selectedAgents.map((a) => a.id);
+        if (chainIds.length > 1) {
+          handleSend(undefined, undefined, chainIds);
+          agents.selectedAgents.forEach((a) => agents.addToRecentAgents(a));
+        } else if (chainIds.length === 1) {
+          handleSend(undefined, chainIds[0]);
+          agents.addToRecentAgents(agents.selectedAgents[0]);
+        } else if (agents.selectedAgent) {
+          handleSend(undefined, agents.selectedAgent.id);
+          agents.addToRecentAgents(agents.selectedAgent);
+        } else {
+          handleSend();
+        }
+        agents.clearChain();
       }}
       onStop={cancelOperation}
       onKeyDown={handleKeyDown}
@@ -345,6 +357,13 @@ export default function MissionControl() {
       agentSearchQuery={agents.searchQuery}
       onAgentSearchChange={agents.setSearchQuery}
       onBrowseAgents={ui.openAgents}
+      // Chain props
+      selectedAgents={agents.selectedAgents}
+      onAddAgentToChain={agents.addAgentToChain}
+      onRemoveAgentFromChain={agents.removeAgentFromChain}
+      onReorderChain={agents.reorderChain}
+      onClearChain={agents.clearChain}
+      maxChainLength={agents.maxChainLength}
     />
   );
 
@@ -692,7 +711,8 @@ export default function MissionControl() {
         quota={quota}
         onRefreshQuota={fetchQuota}
         onSelectAgent={(agent: any) => {
-          agents.setSelectedAgent(agent);
+          agents.clearChain();
+          agents.addAgentToChain(agent);
         }}
         activeRepoId={activeSession?.repoIds?.[0]}
       />

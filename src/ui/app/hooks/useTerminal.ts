@@ -729,7 +729,7 @@ export function useTerminal() {
 
   // Send message handler
   const handleSend = useCallback(
-    async (message?: string, agentId?: string) => {
+    async (message?: string, agentId?: string, agentChain?: string[]) => {
       const content = message || input.trim();
       if (
         (!content && pendingAttachments.length === 0) ||
@@ -785,7 +785,7 @@ export function useTerminal() {
           setIsUploading(false);
         }
 
-        sendMessage(content || 'Please analyze the attached files.', attachments, agentId);
+        sendMessage(content || 'Please analyze the attached files.', attachments, agentId, agentChain);
         setInput('');
         if (activeSessionId) {
           localStorage.removeItem(`claudedesk-draft-${activeSessionId}`);

@@ -47,3 +47,13 @@ export interface AgentUsage {
   lastUsedAt: string;
   useCount: number;
 }
+
+export interface ChainSegment {
+  agentId: string;
+  agentName: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  content: string;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}

@@ -15,12 +15,16 @@ import {
   Package,
   Bot,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAgents } from '../../hooks/useAgents';
 import { AgentCard } from './AgentCard';
 import { AgentConfigModal } from './AgentConfigModal';
 import { AgentExecutionList } from './AgentExecutionStatus';
+import { AgentFormModal } from './AgentFormModal';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import type { AgentFormData } from './AgentFormModal';
 import type { Agent } from '../../types/agents';
 
 interface AgentsPanelProps {
@@ -101,6 +105,10 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
     togglePin,
     cancelExecution,
     rerunExecution,
+    createAgent,
+    updateAgent,
+    deleteAgent,
+    getAgentRaw,
   } = useAgents({ repoId });
 
   // Section collapse states
@@ -111,6 +119,20 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
   // Config modal state
   const [selectedAgentForModal, setSelectedAgentForModal] = useState<Agent | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
+
+  // CRUD modal state
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
+  const [editAgentData, setEditAgentData] = useState<{
+    id: string;
+    name: string;
+    description?: string;
+    model: 'opus' | 'sonnet' | 'haiku' | 'inherit';
+    color?: string;
+    systemPrompt?: string;
+  } | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
 
   // Refreshing state
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -144,16 +166,61 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
     // For now, just filter it out locally (could persist this)
   }, []);
 
+  // Handle create agent
+  const handleCreateClick = useCallback(() => {
+    setFormMode('create');
+    setEditAgentData(null);
+    setShowFormModal(true);
+  }, []);
+
+  // Handle edit agent
+  const handleEditAgent = useCallback(async (agent: Agent) => {
+    try {
+      const raw = await getAgentRaw(agent.id);
+      setFormMode('edit');
+      setEditAgentData(raw);
+      setShowConfigModal(false);
+      setSelectedAgentForModal(null);
+      setShowFormModal(true);
+    } catch (err) {
+      console.error('Failed to load agent for editing:', err);
+    }
+  }, [getAgentRaw]);
+
+  // Handle save (create or edit)
+  const handleFormSave = useCallback(async (data: AgentFormData) => {
+    if (formMode === 'create') {
+      await createAgent(data);
+    } else if (editAgentData) {
+      await updateAgent(editAgentData.id, data);
+    }
+    setShowFormModal(false);
+    setEditAgentData(null);
+  }, [formMode, editAgentData, createAgent, updateAgent]);
+
+  // Handle delete agent
+  const handleDeleteAgent = useCallback((agent: Agent) => {
+    setDeleteTarget(agent);
+    setShowDeleteModal(true);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    await deleteAgent(deleteTarget.id);
+    setShowDeleteModal(false);
+    setDeleteTarget(null);
+  }, [deleteTarget, deleteAgent]);
+
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !showConfigModal) {
+      if (e.key === 'Escape' && isOpen && !showConfigModal && !showFormModal && !showDeleteModal) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, showConfigModal, onClose]);
+  }, [isOpen, showConfigModal, showFormModal, showDeleteModal, onClose]);
 
   // Active executions (running or pending)
   const activeExecutions = executions.filter(
@@ -208,16 +275,25 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
                   <h2 className="text-lg font-semibold text-white">Agents</h2>
                 </div>
 
-                <button
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-50"
-                  aria-label="Refresh"
-                >
-                  <RefreshCw
-                    className={cn('h-5 w-5 text-white/60', isRefreshing && 'animate-spin')}
-                  />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCreateClick}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10"
+                    aria-label="Create new agent"
+                  >
+                    <Plus className="h-5 w-5 text-white/60" />
+                  </button>
+                  <button
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10 disabled:opacity-50"
+                    aria-label="Refresh"
+                  >
+                    <RefreshCw
+                      className={cn('h-5 w-5 text-white/60', isRefreshing && 'animate-spin')}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Search */}
@@ -303,6 +379,8 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
                             agent={agent}
                             onSelect={handleAgentClick}
                             onTogglePin={togglePin}
+                            onEdit={handleEditAgent}
+                            onDelete={handleDeleteAgent}
                           />
                         ))}
                       </CollapsibleSection>
@@ -323,6 +401,8 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
                             agent={agent}
                             onSelect={handleAgentClick}
                             onTogglePin={togglePin}
+                            onEdit={handleEditAgent}
+                            onDelete={handleDeleteAgent}
                           />
                         ))}
                       </CollapsibleSection>
@@ -343,6 +423,8 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
                             agent={agent}
                             onSelect={handleAgentClick}
                             onTogglePin={togglePin}
+                            onEdit={handleEditAgent}
+                            onDelete={handleDeleteAgent}
                           />
                         ))}
                       </CollapsibleSection>
@@ -354,12 +436,23 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
                       builtinAgents.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
                           <Bot className="h-12 w-12 text-white/20 mb-4" />
-                          <p className="text-sm text-white/50 mb-1">No agents found</p>
-                          <p className="text-xs text-white/30">
+                          <p className="text-sm text-white/50 mb-1">
+                            {searchQuery ? 'No agents found' : 'No custom agents yet'}
+                          </p>
+                          <p className="text-xs text-white/30 mb-4">
                             {searchQuery
                               ? 'Try a different search term'
-                              : 'Configure agents in your project settings'}
+                              : 'Create your first agent to get started'}
                           </p>
+                          {!searchQuery && (
+                            <button
+                              onClick={handleCreateClick}
+                              className="inline-flex items-center gap-2 rounded-2xl py-3 px-5 text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Create Agent
+                            </button>
+                          )}
                         </div>
                       )}
                   </div>
@@ -379,6 +472,30 @@ export function AgentsPanel({ isOpen, onClose, onSelectAgent, repoId }: AgentsPa
           setSelectedAgentForModal(null);
         }}
         onSelect={handleAgentSelect}
+        onEdit={handleEditAgent}
+      />
+
+      {/* Create/Edit Form Modal */}
+      <AgentFormModal
+        isOpen={showFormModal}
+        mode={formMode}
+        agent={editAgentData}
+        onSave={handleFormSave}
+        onClose={() => {
+          setShowFormModal(false);
+          setEditAgentData(null);
+        }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        agentName={deleteTarget?.name || ''}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setShowDeleteModal(false);
+          setDeleteTarget(null);
+        }}
       />
     </>
   );

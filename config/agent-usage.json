@@ -1,0 +1,22 @@
+{
+  "entries": [
+    {
+      "agentId": "ui-spec-generator",
+      "agentName": "ui-spec-generator",
+      "lastUsedAt": "2026-01-30T10:10:41.452Z",
+      "useCount": 9
+    },
+    {
+      "agentId": "product-spec-designer",
+      "agentName": "product-spec-designer",
+      "lastUsedAt": "2026-01-30T10:10:41.451Z",
+      "useCount": 5
+    },
+    {
+      "agentId": "architecture-design",
+      "agentName": "architecture-design",
+      "lastUsedAt": "2026-01-30T09:37:56.392Z",
+      "useCount": 4
+    }
+  ]
+}

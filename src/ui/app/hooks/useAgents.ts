@@ -43,8 +43,9 @@ export function useAgents(options: UseAgentsOptions = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
 
-  // Agent selection state
+  // Agent selection state (supports both single and chain)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgents, setSelectedAgents] = useState<Agent[]>([]);
   const [recentAgentUsage, setRecentAgentUsage] = useState<AgentUsage[]>([]);
 
   // Load pinned agents settings
@@ -270,6 +271,98 @@ export function useAgents(options: UseAgentsOptions = {}) {
       .filter((a): a is Agent => a !== undefined);
   }, [recentAgentUsage, allAgents]);
 
+  // Chain management: max 5 agents
+  const MAX_CHAIN_LENGTH = 5;
+
+  const addAgentToChain = useCallback((agent: Agent) => {
+    setSelectedAgents((prev) => {
+      if (prev.length >= MAX_CHAIN_LENGTH) return prev;
+      if (prev.some((a) => a.id === agent.id)) return prev; // no duplicates
+      return [...prev, agent];
+    });
+    // Also set as selectedAgent for backward compat (last added)
+    setSelectedAgent(agent);
+  }, []);
+
+  const removeAgentFromChain = useCallback((agentId: string) => {
+    setSelectedAgents((prev) => {
+      const next = prev.filter((a) => a.id !== agentId);
+      // Update selectedAgent for backward compat
+      if (next.length === 0) setSelectedAgent(null);
+      else setSelectedAgent(next[next.length - 1]);
+      return next;
+    });
+  }, []);
+
+  const reorderChain = useCallback((fromIndex: number, toIndex: number) => {
+    setSelectedAgents((prev) => {
+      const arr = [...prev];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      return arr;
+    });
+  }, []);
+
+  const clearChain = useCallback(() => {
+    setSelectedAgents([]);
+    setSelectedAgent(null);
+  }, []);
+
+  // CRUD operations for custom agents
+  const createAgent = useCallback(async (data: {
+    name: string;
+    description: string;
+    model: string;
+    color: string;
+    systemPrompt: string;
+  }): Promise<void> => {
+    const created = await api<BackendAgent>('POST', '/agents', data);
+    // Refresh list to pick up the new agent
+    await loadClaudeAgents(pinnedAgentIds);
+  }, [loadClaudeAgents, pinnedAgentIds]);
+
+  const updateAgent = useCallback(async (agentId: string, data: {
+    name: string;
+    description: string;
+    model: string;
+    color: string;
+    systemPrompt: string;
+  }): Promise<void> => {
+    await api<BackendAgent>('PUT', `/agents/${encodeURIComponent(agentId)}`, data);
+    await loadClaudeAgents(pinnedAgentIds);
+  }, [loadClaudeAgents, pinnedAgentIds]);
+
+  const deleteAgent = useCallback(async (agentId: string): Promise<void> => {
+    await api<{ id: string; deleted: boolean }>('DELETE', `/agents/${encodeURIComponent(agentId)}`);
+    // Remove from pinned if needed
+    if (pinnedAgentIds.includes(agentId)) {
+      const newPinnedIds = pinnedAgentIds.filter((id) => id !== agentId);
+      setPinnedAgentIds(newPinnedIds);
+      try {
+        await api('PUT', '/settings/agents', { pinnedAgentIds: newPinnedIds });
+      } catch (err) {
+        console.error('Failed to update pinned agents after delete:', err);
+      }
+    }
+    // Clear selection if deleted agent was selected
+    if (selectedAgent?.id === agentId) {
+      setSelectedAgent(null);
+    }
+    setSelectedAgents((prev) => prev.filter((a) => a.id !== agentId));
+    await loadClaudeAgents(pinnedAgentIds.filter((id) => id !== agentId));
+  }, [loadClaudeAgents, pinnedAgentIds, selectedAgent]);
+
+  const getAgentRaw = useCallback(async (agentId: string): Promise<{
+    id: string;
+    name: string;
+    description: string;
+    model: 'opus' | 'sonnet' | 'haiku' | 'inherit';
+    color: string;
+    systemPrompt: string;
+  }> => {
+    return api('GET', `/agents/${encodeURIComponent(agentId)}/raw`);
+  }, []);
+
   // Add agent to recent (optimistic update + API call happens when message is sent)
   const addToRecentAgents = useCallback((agent: Agent) => {
     // Optimistic update - add to front of recent list
@@ -298,9 +391,18 @@ export function useAgents(options: UseAgentsOptions = {}) {
     recentAgents,
     executions,
 
-    // Selection state
+    // Selection state (single agent - backward compat)
     selectedAgent,
     setSelectedAgent,
+
+    // Chain selection state
+    selectedAgents,
+    setSelectedAgents,
+    addAgentToChain,
+    removeAgentFromChain,
+    reorderChain,
+    clearChain,
+    maxChainLength: MAX_CHAIN_LENGTH,
 
     // State
     loading,
@@ -316,6 +418,12 @@ export function useAgents(options: UseAgentsOptions = {}) {
     rerunExecution,
     clearExecutions,
     addToRecentAgents,
+
+    // CRUD
+    createAgent,
+    updateAgent,
+    deleteAgent,
+    getAgentRaw,
   };
 }
 

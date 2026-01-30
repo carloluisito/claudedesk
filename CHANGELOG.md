@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-01-30
+
+### Added
+
+#### Agent Management
+- Full CRUD for custom agents: create, edit, and delete user-defined agents via UI and API (`POST /api/agents`, `PUT /api/agents/:agentId`, `DELETE /api/agents/:agentId`)
+- Agent form modal with name, description, model selection, color picker, and system prompt editor
+- Delete confirmation modal with safety check (built-in agents cannot be deleted)
+- `GET /api/agents/:agentId/raw` endpoint to retrieve full agent markdown for editing
+- Agent pinning for quick access to frequently used agents
+- Agent usage tracking with `config/agent-usage.json` (auto-created)
+
+#### Agent Chaining
+- Sequential multi-agent chain execution (2–5 agents per chain)
+- Chain builder UI with drag-to-reorder agent selection
+- Real-time chain progress indicator showing current agent execution status
+- Chained message rendering with per-segment output display
+- WebSocket events: `chain-segment-start`, `chain-segment-complete`
+- Each agent receives the previous agent's output as context (truncated to 100k chars)
+
+#### Authentication Endpoints
+- `GET /api/auth/session` — cookie-based session validation for PWA re-authentication
+- `POST /api/auth/pin/generate` — generate 6-digit pairing PIN for device pairing
+- `POST /api/auth/pin/validate` — validate PIN and return auth token (sets session cookie)
+- `GET /api/auth/pin/status` — check active PIN status
+- `DELETE /api/auth/pin` — invalidate current PIN
+
+#### Documentation
+- Added Authentication Endpoints section to README API Reference
+- Added `VITE_DEV_PORT` and `CLAUDEDESK_TOKEN` to SETUP.md and README environment tables
+- Fixed health endpoint documentation to include `update` object in response
+- Fixed SETUP.md CLI flags (removed non-existent short flags `-p`, `-d`, `-h`, `-v`)
+
 ## [3.3.0] - 2026-01-30
 
 ### Added

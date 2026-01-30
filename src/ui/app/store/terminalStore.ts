@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api, UploadedAttachment } from '../lib/api';
 import { requestCache, CACHE_KEYS } from '../lib/request-cache';
 import { useUpdateStore } from './updateStore';
+import type { ChainSegment } from '../types/agents';
 
 const ACTIVE_SESSION_KEY = 'claudedesk-active-session';
 
@@ -34,6 +35,10 @@ export interface ChatMessage {
   agentId?: string;      // Agent used for this message (if any)
   agentName?: string;    // Display name of the agent
   autoDetected?: boolean; // Whether agent was auto-detected (vs manually selected)
+  // Agent chain fields
+  agentChain?: string[];           // Ordered agent IDs for chain execution
+  chainSegments?: ChainSegment[];  // Per-agent output segments
+  chainStatus?: 'running' | 'completed' | 'partial' | 'cancelled'; // Overall chain status
 }
 
 export interface PendingAttachment {
@@ -184,7 +189,7 @@ interface TerminalStore {
   addRepoToSession: (sessionId: string, repoId: string) => Promise<void>;
   removeRepoFromSession: (sessionId: string, repoId: string) => Promise<void>;
   switchSession: (sessionId: string) => void;
-  sendMessage: (content: string, attachments?: MessageAttachment[], agentId?: string) => void;
+  sendMessage: (content: string, attachments?: MessageAttachment[], agentId?: string, agentChain?: string[]) => void;
   setMode: (mode: 'plan' | 'direct') => void;
   cancelOperation: () => void;
   clearMessages: () => void;
@@ -431,20 +436,33 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     }
   },
 
-  sendMessage: (content: string, attachments?: MessageAttachment[], agentId?: string) => {
+  sendMessage: (content: string, attachments?: MessageAttachment[], agentId?: string, agentChain?: string[]) => {
     const { ws, activeSessionId } = get();
     if (!ws || ws.readyState !== WebSocket.OPEN || !activeSessionId) {
-      console.error('Cannot send message: not connected or no active session');
+      console.error('Cannot send message: not connected or no active session', {
+        wsExists: !!ws,
+        wsReadyState: ws?.readyState,
+        activeSessionId,
+        WebSocketOPEN: WebSocket.OPEN,
+      });
       return;
     }
 
-    ws.send(JSON.stringify({
+    const payload: Record<string, unknown> = {
       type: 'message',
       sessionId: activeSessionId,
       content,
       attachments,
-      agentId,  // Pass agent ID to backend for --agent flag
-    }));
+    };
+
+    // agentChain takes precedence over single agentId
+    if (agentChain && agentChain.length > 0) {
+      payload.agentChain = agentChain;
+    } else if (agentId) {
+      payload.agentId = agentId;
+    }
+
+    ws.send(JSON.stringify(payload));
   },
 
   setMode: (mode: 'plan' | 'direct') => {
@@ -738,6 +756,152 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
           case 'cancelled':
             if (sessionId) {
               get().updateSession(sessionId, { status: 'idle' });
+            }
+            break;
+
+          case 'chain-segment-start':
+            // A new chain segment is starting
+            if (sessionId && message.messageId != null && message.segmentIndex != null) {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== message.messageId) return m;
+                          const segments = [...(m.chainSegments || [])];
+                          // Ensure segment exists at the right index
+                          while (segments.length <= message.segmentIndex) {
+                            segments.push({
+                              agentId: '',
+                              agentName: '',
+                              status: 'pending',
+                              content: '',
+                            });
+                          }
+                          segments[message.segmentIndex] = {
+                            agentId: message.agentId || '',
+                            agentName: message.agentName || message.agentId || '',
+                            status: 'running',
+                            content: '',
+                            startedAt: new Date().toISOString(),
+                          };
+                          return {
+                            ...m,
+                            agentId: message.agentId || m.agentId,
+                            agentName: message.agentName || message.agentId || m.agentName,
+                            chainSegments: segments,
+                            chainStatus: 'running' as const,
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }));
+            }
+            break;
+
+          case 'chain-segment-chunk':
+            // Streaming chunk for a specific chain segment
+            if (sessionId && message.messageId && message.segmentIndex != null && message.content) {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== message.messageId || !m.chainSegments) return m;
+                          const segments = [...m.chainSegments];
+                          if (segments[message.segmentIndex]) {
+                            segments[message.segmentIndex] = {
+                              ...segments[message.segmentIndex],
+                              content: segments[message.segmentIndex].content + message.content,
+                            };
+                          }
+                          return { ...m, chainSegments: segments };
+                        }),
+                      }
+                    : s
+                ),
+              }));
+            }
+            break;
+
+          case 'chain-segment-complete':
+            // A chain segment finished successfully
+            if (sessionId && message.messageId && message.segmentIndex != null) {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== message.messageId || !m.chainSegments) return m;
+                          const segments = [...m.chainSegments];
+                          if (segments[message.segmentIndex]) {
+                            segments[message.segmentIndex] = {
+                              ...segments[message.segmentIndex],
+                              status: 'completed',
+                              completedAt: new Date().toISOString(),
+                            };
+                          }
+                          return { ...m, chainSegments: segments };
+                        }),
+                      }
+                    : s
+                ),
+              }));
+            }
+            break;
+
+          case 'chain-segment-error':
+            // A chain segment failed
+            if (sessionId && message.messageId && message.segmentIndex != null) {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== message.messageId || !m.chainSegments) return m;
+                          const segments = [...m.chainSegments];
+                          if (segments[message.segmentIndex]) {
+                            segments[message.segmentIndex] = {
+                              ...segments[message.segmentIndex],
+                              status: 'failed',
+                              error: message.error || 'Unknown error',
+                              completedAt: new Date().toISOString(),
+                            };
+                          }
+                          return { ...m, chainSegments: segments, chainStatus: 'partial' as const };
+                        }),
+                      }
+                    : s
+                ),
+              }));
+            }
+            break;
+
+          case 'chain-complete':
+            // Entire chain finished
+            if (sessionId && message.messageId) {
+              set((state) => ({
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId
+                    ? {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id !== message.messageId) return m;
+                          return {
+                            ...m,
+                            isStreaming: false,
+                            chainStatus: (message.status as ChatMessage['chainStatus']) || 'completed',
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }));
             }
             break;
 

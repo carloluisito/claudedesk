@@ -4,7 +4,7 @@
 
 import { useEffect } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { X, MessageSquare, Cpu, User, Package } from 'lucide-react';
+import { X, MessageSquare, Cpu, User, Package, Pencil } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import type { Agent } from '../../types/agents';
 
@@ -13,6 +13,7 @@ interface AgentConfigModalProps {
   agent: Agent | null;
   onClose: () => void;
   onSelect: (agent: Agent) => void;
+  onEdit?: (agent: Agent) => void;
 }
 
 const MODEL_BADGES: Record<Agent['model'], { label: string; className: string }> = {
@@ -34,7 +35,7 @@ const MODEL_BADGES: Record<Agent['model'], { label: string; className: string }>
   },
 };
 
-export function AgentConfigModal({ isOpen, agent, onClose, onSelect }: AgentConfigModalProps) {
+export function AgentConfigModal({ isOpen, agent, onClose, onSelect, onEdit }: AgentConfigModalProps) {
   const prefersReduced = useReducedMotion();
 
   // Handle escape key
@@ -140,6 +141,15 @@ export function AgentConfigModal({ isOpen, agent, onClose, onSelect }: AgentConf
               >
                 Cancel
               </button>
+              {agent.source === 'user' && onEdit && (
+                <button
+                  onClick={() => onEdit(agent)}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium bg-white/5 text-white/70 ring-1 ring-white/10 hover:bg-white/10 transition-colors"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </button>
+              )}
               <button
                 onClick={handleSelect}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"

@@ -411,6 +411,7 @@ ClaudeDesk can be configured via environment variables:
 | `CLAUDEDESK_PORT` | 8787 | Port to listen on |
 | `CLAUDEDESK_DATA_DIR` | `~/.claudedesk` | Data directory path |
 | `CLAUDEDESK_TOKEN` | `claudedesk-local` | Override the auth token (use a strong value if exposed to a network) |
+| `VITE_DEV_PORT` | 5173 | Vite dev server port (change to run dev alongside production) |
 | `ALLOW_REMOTE` | false | Set to `true` for remote access |
 | `GITHUB_CLIENT_ID` | - | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | - | GitHub OAuth client secret |
@@ -509,7 +510,14 @@ Returns server health status and version information. Used for Docker healthchec
     "status": "ok",
     "version": "3.3.0",
     "uptime": 12345,
-    "timestamp": "2026-01-28T12:00:00.000Z"
+    "timestamp": "2026-01-28T12:00:00.000Z",
+    "update": {
+      "available": false,
+      "latestVersion": "3.3.0",
+      "canAutoUpdate": true,
+      "installMethod": "global-npm",
+      "lastCheckedAt": "2026-01-28T12:00:00.000Z"
+    }
   }
 }
 ```
@@ -731,6 +739,99 @@ Updates global MCP settings.
 **GET `/api/mcp/catalog`**
 
 Returns the list of pre-configured server templates.
+
+### Authentication Endpoints
+
+These endpoints handle session authentication and PIN-based device pairing.
+
+#### Check Session
+
+**GET `/api/auth/session`**
+
+Validates cookie-based authentication and returns the session token if valid. Used by PWAs to restore authentication from cookies.
+
+```json
+{
+  "success": true,
+  "data": {
+    "authenticated": true,
+    "token": "your-auth-token"
+  }
+}
+```
+
+If no valid cookie exists:
+```json
+{
+  "success": true,
+  "data": { "authenticated": false }
+}
+```
+
+#### Generate Pairing PIN
+
+**POST `/api/auth/pin/generate`** *(requires auth)*
+
+Generates a new 6-digit PIN for pairing a new device. Only one active PIN can exist at a time.
+
+```json
+{
+  "success": true,
+  "data": {
+    "pin": "482917",
+    "expiresAt": "2026-01-28T12:05:00.000Z"
+  }
+}
+```
+
+#### Validate PIN
+
+**POST `/api/auth/pin/validate`** *(no auth required)*
+
+Validates a pairing PIN and returns an auth token on success. Also sets a session cookie for persistent authentication.
+
+Request body:
+```json
+{
+  "pin": "482917"
+}
+```
+
+Success response:
+```json
+{
+  "success": true,
+  "data": { "token": "your-auth-token" }
+}
+```
+
+Failure response (400):
+```json
+{
+  "success": false,
+  "error": "Invalid PIN",
+  "attemptsRemaining": 2
+}
+```
+
+#### Get PIN Status
+
+**GET `/api/auth/pin/status`** *(requires auth)*
+
+Returns the status of the currently active PIN (whether one exists, expiry time).
+
+#### Invalidate PIN
+
+**DELETE `/api/auth/pin`** *(requires auth)*
+
+Invalidates the current active PIN.
+
+```json
+{
+  "success": true,
+  "data": { "invalidated": true }
+}
+```
 
 ### Agent Management Endpoints
 

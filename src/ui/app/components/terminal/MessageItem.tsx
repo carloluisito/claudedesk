@@ -9,6 +9,7 @@ import { ActivityTimeline } from './ActivityTimeline';
 import { CodeBlock, InlineCode } from './CodeBlock';
 import { CodeChangesSummary } from './CodeChangesSummary';
 import { MultiFileDiffModal } from './MultiFileDiffModal';
+import { ChainedMessage } from './v2/ChainedMessage';
 import { sanitizeSensitiveData } from '../../lib/sanitize';
 
 // Threshold for collapsing long messages (in characters)
@@ -264,6 +265,29 @@ export const MessageItem = memo(function MessageItem({
           className="group flex justify-end px-4 sm:px-6 py-4"
         >
           <div className="max-w-[70%] rounded-2xl px-4 py-3 bg-white/[0.12] text-white/95 ring-1 ring-white/[0.12]">
+            {/* Agent attribution for user message */}
+            {message.agentChain && message.agentChain.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {message.agentChain.map((id, i) => (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-[11px] text-purple-400 ring-1 ring-purple-500/20"
+                  >
+                    <Bot className="h-3 w-3" />
+                    @{id}
+                    {i < message.agentChain!.length - 1 && <span className="text-white/20 ml-0.5">&rarr;</span>}
+                  </span>
+                ))}
+              </div>
+            ) : message.agentId ? (
+              <div className="mb-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-[11px] text-purple-400 ring-1 ring-purple-500/20">
+                  <Bot className="h-3 w-3" />
+                  @{message.agentName || message.agentId}
+                </span>
+              </div>
+            ) : null}
+
             {/* Message content */}
             <div className={cn('text-sm', shouldCollapse && 'relative')}>
               <pre
@@ -443,46 +467,65 @@ export const MessageItem = memo(function MessageItem({
           )}
 
           {/* Message content */}
-          <div className={cn('text-[15px] leading-[1.7]', shouldCollapse && 'relative')}>
-            <div
-              className={cn(
-                'prose prose-sm max-w-none prose-pre:p-0 prose-pre:bg-transparent',
-                shouldCollapse && 'max-h-48 overflow-hidden'
-              )}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkBreaks, remarkGfm]}
-                components={markdownComponents}
-              >
-                {preprocessMarkdown(sanitizeSensitiveData(message.content) || (message.isStreaming ? '...' : ''))}
-              </ReactMarkdown>
-            </div>
-
-            {/* Collapse/Expand gradient and button */}
-            {isLongMessage && (
-              <>
-                {shouldCollapse && (
-                  <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none bg-gradient-to-t from-[#0d1117] to-transparent" />
+          {message.chainSegments && message.chainSegments.length > 0 ? (
+            <div className="text-[15px] leading-[1.7]">
+              <ChainedMessage
+                segments={message.chainSegments}
+                chainStatus={message.chainStatus}
+                renderContent={(content) => (
+                  <div className="prose prose-sm max-w-none prose-pre:p-0 prose-pre:bg-transparent">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkBreaks, remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {preprocessMarkdown(sanitizeSensitiveData(content))}
+                    </ReactMarkdown>
+                  </div>
                 )}
-                <button
-                  onClick={() => setIsExpanded(!isExpanded)}
-                  className="flex items-center gap-1 mt-3 text-xs font-medium text-blue-400 hover:text-blue-300"
+              />
+            </div>
+          ) : (
+            <div className={cn('text-[15px] leading-[1.7]', shouldCollapse && 'relative')}>
+              <div
+                className={cn(
+                  'prose prose-sm max-w-none prose-pre:p-0 prose-pre:bg-transparent',
+                  shouldCollapse && 'max-h-48 overflow-hidden'
+                )}
+              >
+                <ReactMarkdown
+                  remarkPlugins={[remarkBreaks, remarkGfm]}
+                  components={markdownComponents}
                 >
-                  {isExpanded ? (
-                    <>
-                      <ChevronUp className="h-3 w-3" />
-                      Show less
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-3 w-3" />
-                      Show more ({Math.round((message.content?.length || 0) / 1000)}k characters)
-                    </>
+                  {preprocessMarkdown(sanitizeSensitiveData(message.content) || (message.isStreaming ? '...' : ''))}
+                </ReactMarkdown>
+              </div>
+
+              {/* Collapse/Expand gradient and button */}
+              {isLongMessage && (
+                <>
+                  {shouldCollapse && (
+                    <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none bg-gradient-to-t from-[#0d1117] to-transparent" />
                   )}
-                </button>
-              </>
-            )}
-          </div>
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="flex items-center gap-1 mt-3 text-xs font-medium text-blue-400 hover:text-blue-300"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronUp className="h-3 w-3" />
+                        Show less
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-3 w-3" />
+                        Show more ({Math.round((message.content?.length || 0) / 1000)}k characters)
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Action buttons - hover only icons */}
           <div className="mt-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">

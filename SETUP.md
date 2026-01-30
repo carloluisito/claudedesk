@@ -62,16 +62,16 @@ The **Setup Wizard** will guide you through:
 claudedesk [options]
 
 Options:
-  -p, --port <port>      Port to listen on (default: 8787)
-  -d, --data-dir <path>  Data directory for config and artifacts
+  --port <port>          Port to listen on (default: 8787)
+  --data-dir <path>      Data directory for config and artifacts
   --skip-wizard          Skip the initial setup wizard
   --allow-remote         Allow remote network access
   --no-open              Don't auto-open the browser on startup
   --check-update         Check for a newer version and exit
   --update               Check and install update if available, then exit
   --clear-cache [type]   Clear cached data and exit (types: sessions, artifacts, worktrees, usage, all)
-  -h, --help             Show help message
-  -v, --version          Show version number
+  --help                 Show help message
+  --version              Show version number
 ```
 
 ### Examples
@@ -123,6 +123,8 @@ ClaudeDesk uses Cloudflare Tunnel for secure remote access:
 |----------|---------|-------------|
 | `CLAUDEDESK_PORT` | 8787 | Port to listen on |
 | `CLAUDEDESK_DATA_DIR` | `~/.claudedesk` | Data directory |
+| `CLAUDEDESK_TOKEN` | `claudedesk-local` | Auth token override (use a strong value if exposed to a network) |
+| `VITE_DEV_PORT` | 5173 | Vite dev server port (for running dev alongside production) |
 | `ALLOW_REMOTE` | false | Allow remote access |
 | `GITHUB_CLIENT_ID` | - | GitHub OAuth |
 | `GITHUB_CLIENT_SECRET` | - | GitHub OAuth |

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ModeToggle } from '../../ui/ModeToggle';
 import { PendingAttachment } from '../../../store/terminalStore';
 import { AgentChip } from './AgentSelector';
+import { AgentChainBuilder } from './AgentChainBuilder';
 import { AutoModeIndicator } from './AutoModeIndicator';
 import { QuickSelectMenu } from './QuickSelectMenu';
 import type { Agent } from '../../../types/agents';
@@ -39,6 +40,13 @@ interface ComposerProps {
   agentSearchQuery?: string;
   onAgentSearchChange?: (query: string) => void;
   onBrowseAgents?: () => void; // Open full agents panel
+  // Agent chain props
+  selectedAgents?: Agent[];
+  onAddAgentToChain?: (agent: Agent) => void;
+  onRemoveAgentFromChain?: (agentId: string) => void;
+  onReorderChain?: (fromIndex: number, toIndex: number) => void;
+  onClearChain?: () => void;
+  maxChainLength?: number;
 }
 
 export function Composer({
@@ -72,6 +80,13 @@ export function Composer({
   agentSearchQuery = '',
   onAgentSearchChange,
   onBrowseAgents,
+  // Chain props
+  selectedAgents = [],
+  onAddAgentToChain,
+  onRemoveAgentFromChain,
+  onReorderChain,
+  onClearChain,
+  maxChainLength = 5,
 }: ComposerProps) {
   const localRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = inputRef || localRef;
@@ -154,7 +169,7 @@ export function Composer({
     }
   };
 
-  // Insert agent from @-mention
+  // Insert agent from @-mention - adds to chain if chain props available
   const insertMentionedAgent = (agent: Agent) => {
     if (mentionStartIndex < 0) return;
 
@@ -165,8 +180,12 @@ export function Composer({
     // Remove the @query and add a space
     onChange(beforeMention + afterMention);
 
-    // Select the agent
-    onAgentSelect?.(agent);
+    // Add to chain if available, otherwise single-select
+    if (onAddAgentToChain) {
+      onAddAgentToChain(agent);
+    } else {
+      onAgentSelect?.(agent);
+    }
 
     // Close popover
     setShowMentionPopover(false);
@@ -219,8 +238,22 @@ export function Composer({
     onKeyDown?.(e);
   };
 
+  const hasChain = selectedAgents.length > 0;
+
   return (
     <div className="rounded-2xl bg-white/[0.04] p-2 ring-1 ring-white/[0.08] shadow-lg">
+      {/* Agent chain display */}
+      {hasChain && onRemoveAgentFromChain && onReorderChain && onClearChain && (
+        <AgentChainBuilder
+          selectedAgents={selectedAgents}
+          onRemove={onRemoveAgentFromChain}
+          onReorder={onReorderChain}
+          onClearAll={onClearChain}
+          maxChainLength={maxChainLength}
+          disabled={disabled || isSending}
+        />
+      )}
+
       {/* Pending attachments */}
       {pendingAttachments.length > 0 && (
         <div className="flex flex-wrap gap-2 px-2 pt-1 pb-2">
@@ -317,21 +350,43 @@ export function Composer({
           {/* Agent selection UI */}
           {onAgentSelect && agents.length > 0 && (
             <div className="relative">
-              {selectedAgent ? (
-                <AgentChip agent={selectedAgent} onRemove={() => onAgentSelect?.(null)} />
-              ) : (
-                <AutoModeIndicator
-                  onClick={() => setShowQuickSelect(!showQuickSelect)}
-                  disabled={disabled || isSending}
-                />
+              {/* Show single chip when no chain support, or auto-mode when no agents selected */}
+              {!hasChain && (
+                <>
+                  {selectedAgent && !onAddAgentToChain ? (
+                    <AgentChip agent={selectedAgent} onRemove={() => onAgentSelect?.(null)} />
+                  ) : (
+                    <AutoModeIndicator
+                      onClick={() => setShowQuickSelect(!showQuickSelect)}
+                      disabled={disabled || isSending || (hasChain && selectedAgents.length >= maxChainLength)}
+                    />
+                  )}
+                </>
               )}
 
-              {/* Quick-select menu */}
+              {/* Show add-agent button when chain has agents but not at max */}
+              {hasChain && selectedAgents.length < maxChainLength && (
+                <button
+                  onClick={() => setShowQuickSelect(!showQuickSelect)}
+                  disabled={disabled || isSending}
+                  className="rounded-full bg-white/5 px-2 py-1 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/10 ring-1 ring-white/10 transition-colors disabled:opacity-50"
+                >
+                  + Add agent ({selectedAgents.length}/{maxChainLength})
+                </button>
+              )}
+
+              {/* Quick-select menu - uses chain-add when available */}
               <QuickSelectMenu
                 isOpen={showQuickSelect}
                 onClose={() => setShowQuickSelect(false)}
                 recentAgents={recentAgents.slice(0, 3)}
-                onSelectAgent={onAgentSelect}
+                onSelectAgent={(agent) => {
+                  if (agent && onAddAgentToChain) {
+                    onAddAgentToChain(agent);
+                  } else {
+                    onAgentSelect(agent);
+                  }
+                }}
                 onBrowseAll={() => onBrowseAgents?.()}
                 selectedAgent={selectedAgent}
                 disabled={disabled || isSending}
