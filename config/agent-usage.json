@@ -1,16 +1,22 @@
 {
   "entries": [
     {
-      "agentId": "ui-spec-generator",
-      "agentName": "ui-spec-generator",
-      "lastUsedAt": "2026-01-30T13:54:12.053Z",
-      "useCount": 10
+      "agentId": "feature-executor",
+      "agentName": "feature-executor",
+      "lastUsedAt": "2026-01-31T00:23:05.626Z",
+      "useCount": 4
     },
     {
       "agentId": "product-spec-designer",
       "agentName": "product-spec-designer",
-      "lastUsedAt": "2026-01-30T13:54:12.052Z",
-      "useCount": 7
+      "lastUsedAt": "2026-01-31T00:23:05.625Z",
+      "useCount": 9
+    },
+    {
+      "agentId": "ui-spec-generator",
+      "agentName": "ui-spec-generator",
+      "lastUsedAt": "2026-01-30T13:54:12.053Z",
+      "useCount": 10
     },
     {
       "agentId": "architecture-design",

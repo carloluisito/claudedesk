@@ -185,6 +185,93 @@ const attachmentUpload = multer({
   },
 });
 
+/**
+ * Recursively enumerate all files in a directory (relative to baseDir).
+ * Returns array of relative file paths.
+ * Skips common large directories like node_modules.
+ */
+function enumerateDirectoryFiles(dirPath: string, baseDir: string): string[] {
+  const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
+  const results: string[] = [];
+
+  try {
+    const entries = readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (skipDirs.has(entry.name)) continue;
+
+      const fullPath = join(dirPath, entry.name);
+      const relativePath = fullPath.substring(baseDir.length + 1).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        // Recurse into subdirectory
+        results.push(...enumerateDirectoryFiles(fullPath, baseDir));
+      } else if (entry.isFile()) {
+        results.push(relativePath);
+      }
+    }
+  } catch {
+    // Ignore errors (permission denied, etc.)
+  }
+
+  return results;
+}
+
+/**
+ * Count lines in a file for insertion/deletion stats.
+ * Returns 0 if file cannot be read.
+ */
+function countFileLines(filePath: string): number {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    return content.split('\n').length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Compute insertions/deletions for a file using git diff --numstat.
+ * Returns { insertions: number, deletions: number }.
+ * For untracked files, counts all lines as insertions.
+ */
+function computeFileStats(
+  filePath: string,
+  fileStatus: string,
+  workingDir: string
+): { insertions: number; deletions: number } {
+  // For untracked files, count all lines as insertions
+  if (fileStatus === 'untracked') {
+    const fullPath = join(workingDir, filePath);
+    const insertions = countFileLines(fullPath);
+    return { insertions, deletions: 0 };
+  }
+
+  // For tracked files, use git diff --numstat
+  try {
+    const numstat = execSync(`git diff --numstat HEAD -- "${filePath}"`, {
+      cwd: workingDir,
+      encoding: 'utf-8',
+      timeout: 5000,
+    }).trim();
+
+    if (numstat) {
+      const parts = numstat.split(/\s+/);
+      const insertions = parseInt(parts[0], 10) || 0;
+      const deletions = parseInt(parts[1], 10) || 0;
+      return { insertions, deletions };
+    }
+  } catch {
+    // If git diff fails, try counting lines for new files
+    if (fileStatus === 'added') {
+      const fullPath = join(workingDir, filePath);
+      const insertions = countFileLines(fullPath);
+      return { insertions, deletions: 0 };
+    }
+  }
+
+  return { insertions: 0, deletions: 0 };
+}
+
 export const terminalRouter = Router();
 
 /**
@@ -1180,7 +1267,7 @@ terminalRouter.get('/sessions/:id/git-status', (req: Request, res: Response) => 
     let modified = 0;
     let staged = 0;
     let untracked = 0;
-    const files: Array<{ path: string; status: string }> = [];
+    const files: Array<{ path: string; status: string; insertions?: number; deletions?: number }> = [];
 
     try {
       const status = execSync('git status --porcelain', {
@@ -1221,7 +1308,26 @@ terminalRouter.get('/sessions/:id/git-status', (req: Request, res: Response) => 
         }
 
         if (filePath) {
-          files.push({ path: filePath, status: fileStatus });
+          // Check if this is a directory (ends with /)
+          if (filePath.endsWith('/')) {
+            // Directory entry - enumerate all files within it
+            const dirFullPath = join(workingDir, filePath);
+            try {
+              if (statSync(dirFullPath).isDirectory()) {
+                const dirFiles = enumerateDirectoryFiles(dirFullPath, workingDir);
+                for (const file of dirFiles) {
+                  const stats = computeFileStats(file, fileStatus, workingDir);
+                  files.push({ path: file, status: fileStatus, ...stats });
+                }
+              }
+            } catch {
+              // If stat fails, skip this directory
+            }
+          } else {
+            // Regular file - compute stats and add
+            const stats = computeFileStats(filePath, fileStatus, workingDir);
+            files.push({ path: filePath, status: fileStatus, ...stats });
+          }
         }
       }
     } catch {
@@ -1377,17 +1483,46 @@ terminalRouter.post('/sessions/:id/file-diff', (req: Request, res: Response) => 
             try {
               const fullPath = join(workingDir, filePath);
               if (existsSync(fullPath)) {
-                const content = readFileSync(fullPath, 'utf-8');
-                const lines = content.split('\n');
-                // Format as a unified diff with all lines as additions
-                diff = [
-                  `diff --git a/${filePath} b/${filePath}`,
-                  'new file mode 100644',
-                  '--- /dev/null',
-                  `+++ b/${filePath}`,
-                  `@@ -0,0 +1,${lines.length} @@`,
-                  ...lines.map(l => `+${l}`),
-                ].join('\n');
+                const stats = statSync(fullPath);
+
+                if (stats.isDirectory()) {
+                  // Directory path - enumerate all files and create combined diff
+                  const dirFiles = enumerateDirectoryFiles(fullPath, workingDir);
+                  const diffParts: string[] = [];
+
+                  for (const file of dirFiles) {
+                    const fileFullPath = join(workingDir, file);
+                    try {
+                      const content = readFileSync(fileFullPath, 'utf-8');
+                      const lines = content.split('\n');
+                      diffParts.push([
+                        `diff --git a/${file} b/${file}`,
+                        'new file mode 100644',
+                        '--- /dev/null',
+                        `+++ b/${file}`,
+                        `@@ -0,0 +1,${lines.length} @@`,
+                        ...lines.map(l => `+${l}`),
+                      ].join('\n'));
+                    } catch {
+                      // Skip files that can't be read
+                    }
+                  }
+
+                  diff = diffParts.join('\n');
+                } else {
+                  // Regular file
+                  const content = readFileSync(fullPath, 'utf-8');
+                  const lines = content.split('\n');
+                  // Format as a unified diff with all lines as additions
+                  diff = [
+                    `diff --git a/${filePath} b/${filePath}`,
+                    'new file mode 100644',
+                    '--- /dev/null',
+                    `+++ b/${filePath}`,
+                    `@@ -0,0 +1,${lines.length} @@`,
+                    ...lines.map(l => `+${l}`),
+                  ].join('\n');
+                }
               }
             } catch {
               // ignore read errors
