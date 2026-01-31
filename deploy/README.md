@@ -304,7 +304,7 @@ Expected response:
   "success": true,
   "data": {
     "status": "ok",
-    "version": "3.4.1",
+    "version": "3.4.2",
     "uptime": 12345,
     "timestamp": "2026-01-28T12:00:00.000Z"
   }

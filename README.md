@@ -508,12 +508,12 @@ Returns server health status and version information. Used for Docker healthchec
   "success": true,
   "data": {
     "status": "ok",
-    "version": "3.4.1",
+    "version": "3.4.2",
     "uptime": 12345,
     "timestamp": "2026-01-31T12:00:00.000Z",
     "update": {
       "available": false,
-      "latestVersion": "3.4.1",
+      "latestVersion": "3.4.2",
       "canAutoUpdate": true,
       "installMethod": "global-npm",
       "lastCheckedAt": "2026-01-28T12:00:00.000Z"
@@ -521,6 +521,69 @@ Returns server health status and version information. Used for Docker healthchec
   }
 }
 ```
+
+### Terminal Session Endpoints
+
+These endpoints manage git operations and file inspection for terminal sessions.
+
+#### Get Git Status
+
+**GET `/api/terminal/sessions/:id/git-status`**
+
+Returns git status with file-level statistics including insertions and deletions.
+
+Query parameters:
+- `repoId` (optional) - For multi-repo sessions
+
+```json
+{
+  "success": true,
+  "data": {
+    "branch": "main",
+    "modified": 2,
+    "staged": 1,
+    "untracked": 3,
+    "worktreeMode": true,
+    "files": [
+      {
+        "path": "src/index.ts",
+        "status": "modified",
+        "insertions": 10,
+        "deletions": 3
+      }
+    ]
+  }
+}
+```
+
+> **Note:** Directory entries (paths ending with `/`) from `git status` are automatically expanded into individual file listings.
+
+#### Get File Diff
+
+**POST `/api/terminal/sessions/:id/file-diff`**
+
+Returns unified diff for a specific file or directory.
+
+Request body:
+```json
+{
+  "filePath": "src/index.ts",
+  "staged": false,
+  "repoId": "optional-repo-id"
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "diff": "diff --git a/src/index.ts b/src/index.ts\n..."
+  }
+}
+```
+
+> **Note:** For untracked files or directories, generates a synthetic diff showing all content as additions. Directory paths generate combined diffs for all contained files.
 
 ### Ship Workflow Endpoints
 

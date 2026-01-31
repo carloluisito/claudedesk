@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.2] - 2026-01-31
+
+### Fixed
+- Review phase showing empty diffs for untracked directories in repositories with no commits
+- Missing insertions/deletions statistics for files in git-status endpoint
+
+### Changed
+- git-status endpoint now expands directory entries (paths ending with `/`) into individual file listings with full stats
+- file-diff endpoint now handles directory paths by generating combined diffs for all files within the directory
+
+### Added
+- Helper functions for directory enumeration, line counting, and file statistics computation
+- Support for computing insertions/deletions for untracked files using line counts
+
 ## [3.4.1] - 2026-01-31
 
 ### Fixed
