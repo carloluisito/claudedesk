@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-01-31
+
+### Changed
+- Worktree creation is now mandatory for all single-repo sessions (previously optional)
+- Backend auto-generates worktree options when none provided for git repositories
+- Removed worktree opt-in toggle from session creation modal
+
+### Added
+- Git initialization flow for non-git repositories
+- "Initialize Git" button in session creation modal for repos without git
+- `POST /api/terminal/repos/:repoId/git-init` endpoint to initialize git repositories
+- `hasGit` property on auto-discovered repositories
+- Workspace scan paths now included in repository path validation
+
+### Fixed
+- Flash of onboarding screen on cache clear (now checks `isLoadingAppData`)
+- Git command errors on non-git or empty repositories (added guards for branches/worktrees endpoints)
+
+### Removed
+- `SessionCreationCard.tsx` component (from `home/` directory)
+- `WorktreeOptions.tsx` component (from `home/` directory)
+
 ## [3.4.2] - 2026-01-31
 
 ### Fixed

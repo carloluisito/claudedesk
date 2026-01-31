@@ -1,6 +1,6 @@
 # ClaudeDesk Architecture
 
-Technical architecture documentation for ClaudeDesk v3.4.2 - an AI-powered development platform with Claude terminal interface.
+Technical architecture documentation for ClaudeDesk v3.5.0 - an AI-powered development platform with Claude terminal interface.
 
 ## Overview
 
@@ -133,15 +133,17 @@ States: idle -> running -> idle | error
 ```
 
 Key responsibilities:
-- Session creation with optional git worktree isolation
+- Session creation with mandatory git worktree isolation for single-repo sessions
+- Auto-generation of worktree options when none provided (backend fallback)
 - Message queue management (messages sent while Claude is busy)
 - WebSocket handler registration (subscribe, message, set-mode, cancel, etc.)
 - Session persistence to `config/terminal-sessions.json`
 - Process limits: MAX_TOTAL_SESSIONS=50, MAX_ACTIVE_PROCESSES=5
 
 Session types:
-- **Standard**: Works directly in repo directory
-- **Worktree**: Creates isolated git worktree for changes (recommended)
+- **Single-repo with worktree** (mandatory): Creates isolated git worktree for changes. Auto-generated if not specified.
+- **Multi-repo**: Works directly in repo directories (worktree not supported for multi-repo)
+- **Non-git repo**: Works directly in directory (worktree requires git initialization first)
 
 **Message Queue Management:**
 - MAX_QUEUE_SIZE: 10 messages (hardcoded limit)

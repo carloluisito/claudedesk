@@ -49,7 +49,7 @@ It is not an IDE. It is not a replacement for Claude Code. It is a session manag
 
 - **Session Management** - Create, persist, resume, search, and export Claude Code sessions
 - **Visual Tool Timeline** - See every Read, Edit, Bash action in real-time as Claude works
-- **Git Worktree Isolation** - Each session runs in its own worktree branch for safe experimentation
+- **Git Worktree Isolation** - All single-repo sessions run in isolated worktree branches, preventing conflicts and enabling safe experimentation without affecting your main branch
 - **Ship Workflow** - Review diffs file-by-file, approve changes individually or in bulk, then commit, push, and create PRs in a guided flow with visual progress tracking
 - **Multi-Repo Sessions** - Work across multiple repositories from a single interface
 - **Quota Tracking** - Monitor your Claude API usage and costs
@@ -508,12 +508,12 @@ Returns server health status and version information. Used for Docker healthchec
   "success": true,
   "data": {
     "status": "ok",
-    "version": "3.4.2",
+    "version": "3.5.0",
     "uptime": 12345,
     "timestamp": "2026-01-31T12:00:00.000Z",
     "update": {
       "available": false,
-      "latestVersion": "3.4.2",
+      "latestVersion": "3.5.0",
       "canAutoUpdate": true,
       "installMethod": "global-npm",
       "lastCheckedAt": "2026-01-28T12:00:00.000Z"
@@ -584,6 +584,33 @@ Response:
 ```
 
 > **Note:** For untracked files or directories, generates a synthetic diff showing all content as additions. Directory paths generate combined diffs for all contained files.
+
+#### Initialize Git Repository
+
+**POST `/api/terminal/repos/:repoId/git-init`**
+
+Initializes a git repository for non-git directories. Creates a git repository with a main branch and an initial empty commit.
+
+Request body: None
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Git repository initialized successfully",
+    "branch": "main"
+  }
+}
+```
+
+This endpoint:
+1. Runs `git init` in the repository directory
+2. Creates a `main` branch with `git checkout -b main`
+3. Creates an initial empty commit
+4. Updates the repository's `hasGit` flag to `true`
+
+Use this when creating a session for a directory that doesn't have git initialized yet.
 
 ### Ship Workflow Endpoints
 
