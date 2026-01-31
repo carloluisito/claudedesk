@@ -488,6 +488,22 @@ terminalRouter.get('/repos/:repoId/branches', (req: Request, res: Response) => {
       return;
     }
 
+    // Check if this is a git repository with commits
+    // If not (non-git or empty repo), return empty arrays
+    if (!gitSandbox.isGitRepoWithCommits(repo.path)) {
+      res.json({
+        success: true,
+        data: {
+          branches: [],
+          localBranches: [],
+          remoteBranches: [],
+          currentBranch: '',
+          mainBranch: '',
+        },
+      });
+      return;
+    }
+
     let localBranches: string[] = [];
     let remoteBranches: string[] = [];
     let currentBranch = '';
@@ -580,6 +596,16 @@ terminalRouter.get('/repos/:repoId/worktrees', (req: Request, res: Response) => 
       return;
     }
 
+    // Check if this is a git repository with commits
+    // If not (non-git or empty repo), return empty array
+    if (!gitSandbox.isGitRepoWithCommits(repo.path)) {
+      res.json({
+        success: true,
+        data: [],
+      });
+      return;
+    }
+
     // Get list of worktree paths
     const worktreePaths = gitSandbox.listWorktrees(repo.path);
 
@@ -615,6 +641,66 @@ terminalRouter.get('/repos/:repoId/worktrees', (req: Request, res: Response) => 
     res.json({
       success: true,
       data: usableWorktrees,
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: errorMsg });
+  }
+});
+
+// Initialize git repository
+terminalRouter.post('/repos/:repoId/git-init', (req: Request, res: Response) => {
+  try {
+    const { repoId } = req.params;
+
+    const repo = repoRegistry.get(repoId);
+    if (!repo) {
+      res.status(404).json({ success: false, error: 'Repository not found' });
+      return;
+    }
+
+    // Run git init
+    try {
+      execSync('git init', {
+        cwd: repo.path,
+        encoding: 'utf-8',
+        timeout: 10000,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to initialize git repository: ${errorMsg}`);
+    }
+
+    // Create main branch
+    try {
+      execSync('git checkout -b main', {
+        cwd: repo.path,
+        encoding: 'utf-8',
+        timeout: 10000,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create main branch: ${errorMsg}`);
+    }
+
+    // Create initial empty commit
+    try {
+      execSync('git commit --allow-empty -m "Initial commit"', {
+        cwd: repo.path,
+        encoding: 'utf-8',
+        timeout: 10000,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create initial commit: ${errorMsg}`);
+    }
+
+    // Update repo's hasGit flag
+    repoRegistry.update(repoId, { hasGit: true });
+
+    res.json({
+      success: true,
+      defaultBranch: 'main',
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

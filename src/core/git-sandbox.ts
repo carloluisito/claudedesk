@@ -140,6 +140,26 @@ export class GitSandbox {
     }
   }
 
+  /**
+   * Check if a directory is a git repository with at least one commit
+   * Returns false for non-git directories or empty repositories (no commits yet)
+   */
+  isGitRepoWithCommits(repoPath: string): boolean {
+    try {
+      // Check if .git directory exists
+      const gitDir = join(repoPath, '.git');
+      if (!existsSync(gitDir)) {
+        return false;
+      }
+
+      // Check if there's at least one commit (HEAD exists)
+      this.exec('git rev-parse HEAD', repoPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Check if working directory is clean (ignoring claudedesk-specific files)
   isClean(repoPath: string): boolean {
     const status = this.exec('git status --porcelain', repoPath);

@@ -369,6 +369,29 @@ export default function MissionControl() {
 
   // No session state
   if (!activeSession) {
+    // Still loading app data -> show loading state to prevent flash of onboarding
+    if (terminal.isLoadingAppData) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-[#05070c]">
+          <div className="pointer-events-none fixed inset-0 z-0">
+            <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-transparent to-transparent" />
+            <div className="absolute -top-32 left-1/2 h-64 w-[600px] -translate-x-1/2 rounded-full bg-blue-500/5 blur-3xl" />
+          </div>
+          <div className="relative z-10 flex flex-col items-center gap-4">
+            <Logo size="lg" />
+            <div className="h-1.5 w-48 bg-white/5 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-white/20 rounded-full"
+                initial={{ width: "0%" }}
+                animate={{ width: "100%" }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // No workspaces -> show onboarding flow
     if (workspaces.length === 0) {
       return (
@@ -470,8 +493,6 @@ export default function MissionControl() {
             isCreatingRepo: terminal.isCreatingRepo,
             createRepoError: terminal.createRepoError,
             onCreateRepoInline: terminal.handleCreateRepoInline,
-            worktreeMode: terminal.worktreeMode,
-            onWorktreeModeChange: terminal.setWorktreeMode,
             worktreeAction: terminal.worktreeAction,
             onWorktreeActionChange: terminal.setWorktreeAction,
             worktreeBranch: terminal.worktreeBranch,
@@ -485,6 +506,7 @@ export default function MissionControl() {
             selectedWorktreePath: terminal.selectedWorktreePath,
             onSelectedWorktreePathChange: terminal.setSelectedWorktreePath,
             loadingWorktrees: terminal.loadingWorktrees,
+            onGitInit: terminal.handleGitInit,
           }}
           sessions={[]}
           currentSessionId={null}
@@ -688,8 +710,6 @@ export default function MissionControl() {
           isCreatingRepo: terminal.isCreatingRepo,
           createRepoError: terminal.createRepoError,
           onCreateRepoInline: terminal.handleCreateRepoInline,
-          worktreeMode: terminal.worktreeMode,
-          onWorktreeModeChange: terminal.setWorktreeMode,
           worktreeAction: terminal.worktreeAction,
           onWorktreeActionChange: terminal.setWorktreeAction,
           worktreeBranch: terminal.worktreeBranch,
@@ -703,6 +723,7 @@ export default function MissionControl() {
           selectedWorktreePath: terminal.selectedWorktreePath,
           onSelectedWorktreePathChange: terminal.setSelectedWorktreePath,
           loadingWorktrees: terminal.loadingWorktrees,
+          onGitInit: terminal.handleGitInit,
         }}
         sessions={sessions}
         currentSessionId={activeSessionId}

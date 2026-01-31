@@ -154,7 +154,6 @@ export function useTerminal() {
   const [createRepoWorkspaceId, setCreateRepoWorkspaceId] = useState<string>('');
 
   // Worktree state
-  const [worktreeMode, setWorktreeMode] = useState(false);
   const [worktreeAction, setWorktreeAction] = useState<'create' | 'existing'>('create');
   const [worktreeBranch, setWorktreeBranch] = useState('');
   const [worktreeBaseBranch, setWorktreeBaseBranch] = useState('');
@@ -423,7 +422,7 @@ export function useTerminal() {
 
   // Auto-fetch branches when worktree mode is enabled and repos are selected
   useEffect(() => {
-    if (worktreeMode && selectedRepoIds.length >= 1) {
+    if (selectedRepoIds.length >= 1) {
       // Fetch branches for the primary (first) repo
       fetchBranchesForRepo(selectedRepoIds[0]);
       // Also fetch existing worktrees
@@ -435,7 +434,7 @@ export function useTerminal() {
       setSelectedWorktreePath('');
       setWorktreeAction('create');
     }
-  }, [worktreeMode, selectedRepoIds, fetchBranchesForRepo, fetchWorktreesForRepo]);
+  }, [selectedRepoIds, fetchBranchesForRepo, fetchWorktreesForRepo]);
 
   // Connect WebSocket
   useEffect(() => {
@@ -727,6 +726,32 @@ export function useTerminal() {
     }
   }, [newRepoName, createRepoWorkspaceId, token, loadData]);
 
+  // Git init handler
+  const handleGitInit = useCallback(async (repoId: string) => {
+    try {
+      const response = await fetch(`/api/terminal/repos/${repoId}/git-init`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to initialize git repository');
+      }
+
+      // Reload data to update repo's hasGit flag
+      await loadData({ forceRefresh: true });
+
+      // Trigger branch fetching for the newly initialized repo
+      await fetchBranchesForRepo(repoId);
+    } catch (err) {
+      throw err instanceof Error ? err : new Error('Failed to initialize git repository');
+    }
+  }, [token, loadData, fetchBranchesForRepo]);
+
   // Send message handler
   const handleSend = useCallback(
     async (message?: string, agentId?: string, agentChain?: string[]) => {
@@ -928,17 +953,16 @@ export function useTerminal() {
   const handleCreateSession = useCallback(async () => {
     if (selectedRepoIds.length === 0) return;
 
+    // Always use worktree mode for single-repo sessions
     let options: { worktreeMode: boolean; branch?: string; baseBranch?: string; existingWorktreePath?: string } | undefined;
 
-    if (worktreeMode) {
+    if (selectedRepoIds.length === 1) {
       if (worktreeAction === 'existing' && selectedWorktreePath) {
-        // Use existing worktree
         options = {
           worktreeMode: true,
           existingWorktreePath: selectedWorktreePath,
         };
       } else if (worktreeAction === 'create' && worktreeBranch) {
-        // Create new worktree
         options = {
           worktreeMode: true,
           branch: worktreeBranch,
@@ -954,14 +978,13 @@ export function useTerminal() {
     setShowNewSessionModal(false);
     setSelectedRepoIds([]);
     setRepoSearch('');
-    setWorktreeMode(false);
     setWorktreeAction('create');
     setWorktreeBranch('');
     setWorktreeBaseBranch('');
     setAvailableBranches([]);
     setExistingWorktrees([]);
     setSelectedWorktreePath('');
-  }, [selectedRepoIds, worktreeMode, worktreeAction, worktreeBranch, worktreeBaseBranch, selectedWorktreePath, createSession]);
+  }, [selectedRepoIds, worktreeAction, worktreeBranch, worktreeBaseBranch, selectedWorktreePath, createSession]);
 
   // Toggle repo selection
   const toggleRepoSelection = useCallback((repoId: string) => {
@@ -1277,8 +1300,6 @@ export function useTerminal() {
     handleCreateRepoInline,
 
     // Worktree state
-    worktreeMode,
-    setWorktreeMode,
     worktreeAction,
     setWorktreeAction,
     worktreeBranch,
@@ -1369,6 +1390,7 @@ export function useTerminal() {
     scrollTabs,
     handleOpenCreateRepoModal,
     handleCreateRepo,
+    handleGitInit,
     handleSend,
     handleFileSelect,
     handleDragOver,

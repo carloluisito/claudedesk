@@ -32,6 +32,7 @@ export const RepoConfigSchema = z.object({
     enabled: z.boolean().default(false),
   }).optional(),
   workspaceId: z.string().optional(),
+  hasGit: z.boolean().optional(),
   // Monorepo support
   isMonorepo: z.boolean().optional(),
   services: z.array(z.object({

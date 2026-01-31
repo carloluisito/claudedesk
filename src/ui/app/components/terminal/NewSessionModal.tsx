@@ -15,10 +15,11 @@ import {
   Plus,
   X,
   GitBranch,
-  GitFork,
   ArrowLeft,
   Rocket,
   Sparkles,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -70,9 +71,7 @@ interface NewSessionModalProps {
   createRepoError: string | null;
   onCreateRepoInline: () => Promise<void>;
 
-  // Worktree options
-  worktreeMode: boolean;
-  onWorktreeModeChange: (enabled: boolean) => void;
+  // Worktree options (always mandatory for single-repo)
   worktreeAction: 'create' | 'existing';
   onWorktreeActionChange: (action: 'create' | 'existing') => void;
   worktreeBranch: string;
@@ -86,6 +85,9 @@ interface NewSessionModalProps {
   selectedWorktreePath: string;
   onSelectedWorktreePathChange: (path: string) => void;
   loadingWorktrees: boolean;
+
+  // Git initialization
+  onGitInit: (repoId: string) => Promise<void>;
 }
 
 type Step = 'repo' | 'branch';
@@ -125,8 +127,6 @@ export function NewSessionModal({
   isCreatingRepo,
   createRepoError,
   onCreateRepoInline,
-  worktreeMode,
-  onWorktreeModeChange,
   worktreeAction,
   onWorktreeActionChange,
   worktreeBranch,
@@ -140,15 +140,20 @@ export function NewSessionModal({
   selectedWorktreePath,
   onSelectedWorktreePathChange,
   loadingWorktrees,
+  onGitInit,
 }: NewSessionModalProps) {
   const [step, setStep] = useState<Step>('repo');
   const [isCreating, setIsCreating] = useState(false);
+  const [gitInitStatus, setGitInitStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [gitInitError, setGitInitError] = useState<string | null>(null);
 
   // Reset step when modal opens
   useEffect(() => {
     if (isOpen) {
       setStep('repo');
       setIsCreating(false);
+      setGitInitStatus('idle');
+      setGitInitError(null);
     }
   }, [isOpen]);
 
@@ -156,13 +161,6 @@ export function NewSessionModal({
   useEffect(() => {
     if (step === 'branch' && !worktreeBranch) {
       onWorktreeBranchChange(generateBranchName());
-    }
-  }, [step]);
-
-  // Enable worktree mode when entering branch step
-  useEffect(() => {
-    if (step === 'branch' && !worktreeMode) {
-      onWorktreeModeChange(true);
     }
   }, [step]);
 
@@ -187,31 +185,25 @@ export function NewSessionModal({
     setStep('branch');
   };
 
-  // Handle launch
-  const handleLaunch = async () => {
-    setIsCreating(true);
+  // Handle git init
+  const handleGitInit = async () => {
+    if (!selectedRepo) return;
+    setGitInitStatus('loading');
+    setGitInitError(null);
     try {
-      await onCreateSession();
-      onClose();
-    } catch {
-      setIsCreating(false);
+      await onGitInit(selectedRepo.id);
+      setGitInitStatus('success');
+      // Trigger branch fetching now that git is initialized
+      // The parent will handle this via the onGitInit callback
+    } catch (e) {
+      setGitInitStatus('error');
+      setGitInitError(e instanceof Error ? e.message : 'An unexpected error occurred');
     }
   };
 
-  // Handle quick launch (skip branch config, no worktree)
-  const handleQuickLaunch = async (repoId: string) => {
-    // Select repo
-    selectedRepoIds.forEach((id) => {
-      if (id !== repoId) onToggleRepoSelection(id);
-    });
-    if (!selectedRepoIds.includes(repoId)) {
-      onToggleRepoSelection(repoId);
-    }
-    // Disable worktree for quick launch
-    onWorktreeModeChange(false);
+  // Handle launch
+  const handleLaunch = async () => {
     setIsCreating(true);
-    // Small delay to let state propagate
-    await new Promise((r) => setTimeout(r, 50));
     try {
       await onCreateSession();
       onClose();
@@ -242,8 +234,13 @@ export function NewSessionModal({
           <div className="flex items-center gap-3">
             {step === 'branch' && (
               <button
-                onClick={() => setStep('repo')}
-                className="p-1.5 -ml-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setStep('repo');
+                  setGitInitStatus('idle');
+                  setGitInitError(null);
+                }}
+                disabled={gitInitStatus === 'loading'}
+                className="p-1.5 -ml-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
@@ -355,7 +352,6 @@ export function NewSessionModal({
                                 key={repo.id}
                                 repo={repo}
                                 onSelect={() => handleRepoSelect(repo.id)}
-                                onQuickLaunch={() => handleQuickLaunch(repo.id)}
                                 isCreating={isCreating}
                               />
                             ))}
@@ -471,62 +467,73 @@ export function NewSessionModal({
                 </div>
               )}
 
-              {/* Worktree toggle */}
-              <div className="mb-4">
-                <button
-                  onClick={() => {
-                    if (selectedRepo?.hasGit !== false) {
-                      onWorktreeModeChange(!worktreeMode);
-                    }
-                  }}
-                  disabled={selectedRepo?.hasGit === false}
-                  className={cn(
-                    'w-full flex items-center gap-3 rounded-xl px-3.5 py-3 ring-1 transition',
-                    selectedRepo?.hasGit === false
-                      ? 'bg-white/[0.01] ring-white/[0.04] cursor-not-allowed opacity-50'
-                      : worktreeMode
-                        ? 'bg-blue-500/[0.07] ring-blue-500/20'
-                        : 'bg-white/[0.02] ring-white/[0.06] hover:bg-white/[0.04]'
+              {/* Git init required */}
+              {selectedRepo?.hasGit === false && gitInitStatus !== 'success' ? (
+                <div className="space-y-4">
+                  {gitInitStatus === 'idle' && (
+                    <div
+                      role="alert"
+                      className="rounded-xl bg-amber-500/5 ring-1 ring-amber-500/20 px-4 py-4 space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1.5">
+                          <h3 className="text-[15px] font-medium text-white">Git Required</h3>
+                          <p className="text-[13px] text-white/50 leading-relaxed">
+                            This repository doesn't have git initialized yet. Initialize a git repository with a main branch to start working.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleGitInit}
+                        className="w-full bg-white text-black hover:opacity-90 rounded-xl py-3 text-[13px] font-semibold transition-opacity"
+                      >
+                        Initialize Git Repo
+                      </button>
+                    </div>
                   )}
-                >
-                  <div className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-lg transition',
-                    worktreeMode && selectedRepo?.hasGit !== false ? 'bg-blue-500/15' : 'bg-white/5'
-                  )}>
-                    <GitFork className={cn('h-4 w-4', worktreeMode && selectedRepo?.hasGit !== false ? 'text-blue-400' : 'text-white/40')} />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className={cn('text-[13px] font-medium', worktreeMode && selectedRepo?.hasGit !== false ? 'text-white' : 'text-white/60')}>
-                      Use worktree
-                    </p>
-                    <p className="text-[11px] text-white/30">
-                      {selectedRepo?.hasGit === false
-                        ? 'Requires a git repository'
-                        : 'Isolated branch for safe experimentation'}
-                    </p>
-                  </div>
-                  <div className={cn(
-                    'h-5 w-9 rounded-full p-0.5 transition-colors',
-                    worktreeMode && selectedRepo?.hasGit !== false ? 'bg-blue-500' : 'bg-white/10'
-                  )}>
-                    <div className={cn(
-                      'h-4 w-4 rounded-full bg-white transition-transform shadow-sm',
-                      worktreeMode && selectedRepo?.hasGit !== false ? 'translate-x-4' : 'translate-x-0'
-                    )} />
-                  </div>
-                </button>
-              </div>
 
-              {/* Branch config (when worktree enabled) */}
-              <AnimatePresence>
-                {worktreeMode && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
+                  {gitInitStatus === 'loading' && (
+                    <div className="rounded-xl bg-blue-500/5 ring-1 ring-blue-500/20 px-4 py-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <Loader2 className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5 animate-spin" />
+                        <div className="flex-1 space-y-1.5">
+                          <h3 className="text-[15px] font-medium text-white">Initializing Git...</h3>
+                          <p className="text-[13px] text-white/50">Creating git repository with main branch</p>
+                        </div>
+                      </div>
+                      <button
+                        disabled
+                        className="w-full bg-white/10 text-white/50 rounded-xl py-3 text-[13px] font-semibold cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Initializing...
+                      </button>
+                    </div>
+                  )}
+
+                  {gitInitStatus === 'error' && (
+                    <div className="rounded-xl bg-red-500/5 ring-1 ring-red-500/20 px-4 py-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <XCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1.5">
+                          <h3 className="text-[15px] font-medium text-white">Initialization Failed</h3>
+                          <p className="text-[13px] text-white/50">{gitInitError}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleGitInit}
+                        className="w-full bg-white text-black hover:opacity-90 rounded-xl py-3 text-[13px] font-semibold transition-opacity"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Branch config (always shown — worktree is mandatory) */}
+                  <div>
                     {/* Action tabs */}
                     <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06] mb-3">
                       <button
@@ -648,18 +655,19 @@ export function NewSessionModal({
 
                     {/* Spacer before button */}
                     <div className="h-4" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+                </>
+              )}
 
-              {/* Launch button */}
+              {/* Launch button - only show if git is initialized or success */}
+              {(selectedRepo?.hasGit !== false || gitInitStatus === 'success') && (
               <button
                 onClick={handleLaunch}
                 disabled={
                   isCreating ||
                   selectedRepoIds.length === 0 ||
-                  (worktreeMode && worktreeAction === 'create' && !worktreeBranch) ||
-                  (worktreeMode && worktreeAction === 'existing' && !selectedWorktreePath)
+                  (worktreeAction === 'create' && !worktreeBranch) ||
+                  (worktreeAction === 'existing' && !selectedWorktreePath)
                 }
                 className={cn(
                   'w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[13px] font-semibold transition',
@@ -680,6 +688,7 @@ export function NewSessionModal({
                   </>
                 )}
               </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -692,12 +701,10 @@ export function NewSessionModal({
 function RepoRow({
   repo,
   onSelect,
-  onQuickLaunch,
   isCreating,
 }: {
   repo: Repo;
   onSelect: () => void;
-  onQuickLaunch: () => void;
   isCreating: boolean;
 }) {
   const repoName = repo.id.split('/').pop() || repo.id;
@@ -719,18 +726,6 @@ function RepoRow({
             {repoName}
           </p>
           <p className="text-[11px] text-white/25 truncate">{shortPath}</p>
-        </div>
-        {/* Quick launch button */}
-        <div
-          role="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onQuickLaunch();
-          }}
-          className="opacity-0 group-hover:opacity-100 flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1 text-[11px] text-white/40 hover:bg-white/10 hover:text-white/70 transition-all cursor-pointer"
-        >
-          <Rocket className="h-3 w-3" />
-          Quick
         </div>
       </button>
     </div>

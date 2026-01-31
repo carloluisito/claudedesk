@@ -183,6 +183,7 @@ export class RepoRegistry {
     const id = dirName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
     // Detect project type and generate appropriate config
+    const hasGit = existsSync(join(repoPath, '.git'));
     const hasPackageJson = existsSync(join(repoPath, 'package.json'));
     const hasCargoToml = existsSync(join(repoPath, 'Cargo.toml'));
     const hasPyProject = existsSync(join(repoPath, 'pyproject.toml')) || existsSync(join(repoPath, 'setup.py'));
@@ -270,6 +271,7 @@ export class RepoRegistry {
       proof,
       port,
       workspaceId,
+      hasGit,
     };
   }
 
@@ -315,8 +317,9 @@ export class RepoRegistry {
   private validateRepoPath(repoPath: string): void {
     const normalizedPath = normalize(repoPath);
 
-    // Check both allowedBasePaths and scanPaths
-    const allAllowedPaths = [...this.allowedBasePaths, ...this.scanPaths];
+    // Check allowedBasePaths, scanPaths, and workspace scan paths
+    const workspacePaths = workspaceManager.getAll().map(w => w.scanPath).filter(p => p);
+    const allAllowedPaths = [...this.allowedBasePaths, ...this.scanPaths, ...workspacePaths];
     const isAllowed = allAllowedPaths.some(basePath =>
       normalizedPath.toLowerCase().startsWith(normalize(basePath).toLowerCase())
     );
@@ -359,6 +362,22 @@ export class RepoRegistry {
       this.save();
     }
     return deleted;
+  }
+
+  update(id: string, updates: Partial<RepoConfig>): boolean {
+    this.ensureLoaded();
+    const repo = this.repos.get(id);
+    if (!repo) {
+      return false;
+    }
+    const updated = { ...repo, ...updates, id: repo.id, path: repo.path };
+    this.repos.set(id, updated);
+    // Only save if it's a manually configured repo
+    const manualRepoIds = new Set(this.manualRepos.map(r => r.id));
+    if (manualRepoIds.has(id) || !this.isAutoDiscovered(repo.path)) {
+      this.save();
+    }
+    return true;
   }
 
   private save(): void {

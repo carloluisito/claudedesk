@@ -447,11 +447,30 @@ class TerminalSessionManager {
       }
     }
 
+    // Worktree is mandatory for single-repo sessions.
+    // If no worktree options provided, auto-generate them.
+    let effectiveWorktreeOptions = worktreeOptions;
+    if (!effectiveWorktreeOptions && repoIds.length === 1) {
+      const repo = repoRegistry.get(repoIds[0])!;
+      // Only auto-create worktree if the repo is a git repository
+      if (existsSync(join(repo.path, '.git'))) {
+        const autoBaseBranch = gitSandbox.getMainBranch(repo.path);
+        const timestamp = Date.now().toString(36);
+        const autoBranch = `session/${timestamp}`;
+        effectiveWorktreeOptions = {
+          worktreeMode: true,
+          branch: autoBranch,
+          baseBranch: autoBaseBranch,
+        };
+        console.log(`[TerminalSession] Auto-generating worktree options: branch=${autoBranch}, baseBranch=${autoBaseBranch}`);
+      }
+    }
+
     // Validate worktree options
-    if (worktreeOptions) {
+    if (effectiveWorktreeOptions) {
       // Either need a branch name for new worktree OR an existing worktree path
-      const hasExisting = worktreeOptions.existingWorktreePath && typeof worktreeOptions.existingWorktreePath === 'string';
-      const hasNewBranch = worktreeOptions.branch && typeof worktreeOptions.branch === 'string';
+      const hasExisting = effectiveWorktreeOptions.existingWorktreePath && typeof effectiveWorktreeOptions.existingWorktreePath === 'string';
+      const hasNewBranch = effectiveWorktreeOptions.branch && typeof effectiveWorktreeOptions.branch === 'string';
 
       if (!hasExisting && !hasNewBranch) {
         throw new Error('Branch name or existingWorktreePath is required when worktreeMode is enabled');
@@ -477,8 +496,8 @@ class TerminalSessionManager {
       isBookmarked: false,
     };
 
-    // Set up worktree if requested
-    if (worktreeOptions) {
+    // Set up worktree (mandatory for single-repo sessions)
+    if (effectiveWorktreeOptions) {
       const primaryRepoId = repoIds[0];
       const repo = repoRegistry.get(primaryRepoId)!;
 
@@ -488,8 +507,8 @@ class TerminalSessionManager {
       }
 
       // Check if using existing worktree
-      if (worktreeOptions.existingWorktreePath) {
-        const existingPath = worktreeOptions.existingWorktreePath;
+      if (effectiveWorktreeOptions.existingWorktreePath) {
+        const existingPath = effectiveWorktreeOptions.existingWorktreePath;
 
         console.log(`[TerminalSession] Using existing worktree for session ${id} at ${existingPath}`);
 
@@ -525,8 +544,8 @@ class TerminalSessionManager {
       } else {
         // Create new worktree
         const worktreePath = getWorktreePath(repo.path, primaryRepoId, id);
-        const branch = worktreeOptions.branch;
-        const baseBranch = worktreeOptions.baseBranch || gitSandbox.getMainBranch(repo.path);
+        const branch = effectiveWorktreeOptions.branch;
+        const baseBranch = effectiveWorktreeOptions.baseBranch || gitSandbox.getMainBranch(repo.path);
 
         console.log(`[TerminalSession] Creating worktree for session ${id} at ${worktreePath}`);
 
