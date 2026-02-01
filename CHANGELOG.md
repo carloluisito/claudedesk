@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-02-01
+
+### Added
+
+#### Idea Building (Repo-Free Ideation Sessions)
+- First-class "Idea" concept — chat-first brainstorming spaces that don't require a repository, workspace, or git
+- Ideas start ephemeral (memory only) and can be pinned/saved to `config/ideas.json` for persistence
+- Purple accent color and lightbulb iconography distinguish ideas from terminal sessions
+- IdeaView: pure chat interface with Claude for open-ended brainstorming
+- IdeaTitleBar: inline title editing with Save, Attach, and Promote action buttons
+- IdeaPanel: right sidebar (Ctrl+B) with search, filtering, and idea cards showing status badges
+- RepoDock: idea pills appear alongside session pills with purple highlight, dropdown [+] menu for "New Idea" / "New Session"
+- Repo attachment: link ideas to existing repos for read-only codebase context without modification
+- Idea promotion: two-step modal to graduate ideas into full projects (git init + session creation with optional scaffold)
+- Usage quota chips displayed on idea view headers
+- Keyboard shortcuts: `Ctrl+Shift+I` (create new idea), `Ctrl+B` (toggle idea panel)
+- Core module: `idea-manager.ts` singleton for idea lifecycle, Claude invocation, WebSocket handlers, and persistence
+- REST API: 9 endpoints at `/api/ideas` (create, list, get, update, delete, save, cancel, promote, attach/detach)
+- WebSocket events: `subscribe-idea`, `unsubscribe-idea`, `idea-message`, `idea-cancel`, `idea-set-mode`
+- Zustand store: `ideaStore.ts` with `openIdeaIds` tracking for dock persistence across focus changes
+- New types: `Idea`, `IdeaStatus`, `IdeaChatMessage`, `IdeaQueuedMessage`, `PromoteOptions`
+- Empty state dual CTAs: "New Idea" and "New Session" buttons with keyboard hints
+- Recent saved ideas displayed as quick-access cards on the empty state screen
+
 ## [3.6.0] - 2026-02-01
 
 ### Added

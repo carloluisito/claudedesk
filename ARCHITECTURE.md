@@ -1,6 +1,6 @@
 # ClaudeDesk Architecture
 
-Technical architecture documentation for ClaudeDesk v3.6.0 - an AI-powered development platform with Claude terminal interface.
+Technical architecture documentation for ClaudeDesk v3.7.0 - an AI-powered development platform with Claude terminal interface.
 
 ## Overview
 
@@ -33,6 +33,7 @@ The architecture enables developers to:
 |  Zustand Stores  |                  |   Core Modules       |
 |  - terminalStore |                  |   - terminal-session |
 |  - appStore      |                  |   - claude-invoker   |
+|  - ideaStore     |                  |   - idea-manager     |
 |  - runStore      |                  |   - context-manager  |
 |                  |                  |   - git-sandbox      |
 |                  |                  |   - app-manager      |
@@ -122,6 +123,7 @@ This dual-mode architecture enables Cloudflare tunnels to work in both environme
 | `tunnel-routes.ts` | `/api/tunnel/*` | Remote tunnel control, QR code generation |
 | `mcp-routes.ts` | `/api/mcp/*` | MCP server configuration and tool management |
 | `system-routes.ts` | `/api/system/*` | Update checking and cache management |
+| `idea-routes.ts` | `/api/ideas/*` | Idea CRUD, save, promote, attach/detach repos |
 
 ### Core Modules
 
@@ -320,6 +322,27 @@ Configurable thresholds (via `settings.context`):
 - `maxPromptTokens`: 150000 — token budget (75% of 200K window)
 - `verbatimRecentCount`: 6 — message pairs kept verbatim after summarization
 
+#### `idea-manager.ts` - Idea Building
+
+Singleton managing repo-free brainstorming sessions with Claude:
+
+Key responsibilities:
+- Idea lifecycle: create (ephemeral), save, delete, promote to project
+- Claude invocation with ideation-focused system prompt (no git/worktree instructions)
+- Working directory resolution: attached repo path or temp dir at `temp/ideas/<ideaId>/`
+- Persistence: saved ideas stored in `config/ideas.json`
+- WebSocket handlers: `subscribe-idea`, `idea-message`, `idea-cancel`, `idea-set-mode`
+- Repo attachment/detachment for read-only codebase context
+- Promotion flow: git init + register repo + create terminal session + handoff prompt
+- Cleanup: prune orphaned temp dirs on startup
+- Shares `MAX_ACTIVE_CLAUDE_PROCESSES` (5) limit with terminal sessions
+
+Idea states:
+```
+ephemeral (memory only) → saved (persisted to ideas.json)
+                        → promoted (graduated to project session)
+```
+
 ## Frontend Architecture
 
 ### Stack
@@ -427,6 +450,35 @@ Benefits:
 - Only one overlay active at a time (prevents stacking)
 - Desktop: multiple panels can be expanded
 - Mobile: uses sheet pattern instead of modals
+
+#### `ideaStore.ts` - Idea Building State
+
+Manages repo-free brainstorming sessions:
+
+```typescript
+interface IdeaStore {
+  ideas: Idea[];
+  activeIdeaId: string | null;
+  openIdeaIds: Set<string>; // Ideas shown in dock (persists across focus changes)
+  showIdeaPanel: boolean;
+  ideaPanelSearch: string;
+  // ... actions
+}
+```
+
+Key actions:
+- `createIdea()` - Create ephemeral idea, set active, add to openIdeaIds
+- `switchIdea()` - Switch active idea (adds to openIdeaIds)
+- `clearActiveIdea()` - Deselect idea (stays in dock)
+- `closeIdea()` - Remove from dock, cleanup ephemeral ideas
+- `saveIdea()` - Pin ephemeral → saved (persists to ideas.json)
+- `promoteIdea()` - Graduate to project session
+- `attachToRepo()` / `detachFromRepo()` - Link/unlink repos for context
+
+WebSocket integration:
+- Shares WebSocket connection with terminalStore (lazy require to avoid circular deps)
+- `registerIdeaWSHandlers()` wraps WS onmessage, intercepts `idea-` prefixed events
+- Idea messages routed to ideaStore, all other messages pass through to terminalStore
 
 ### Design System
 
@@ -551,6 +603,14 @@ src/ui/app/
 |   |       +-- PromptPhase.tsx    # Prompt/chat phase
 |   |       +-- ReviewPhase.tsx    # Review phase
 |   |       +-- ShipPhase.tsx      # Ship phase
+|   +-- idea/               # Idea Building components
+|   |   +-- IdeaView.tsx          # Main chat interface (purple accent, lighter bg)
+|   |   +-- IdeaTitleBar.tsx      # Inline title editing + Save/Attach/Promote actions
+|   |   +-- IdeaPanel.tsx         # Right sidebar with search and idea list
+|   |   +-- IdeaList.tsx          # Filtered scrollable idea list
+|   |   +-- IdeaCard.tsx          # Individual idea preview with status badges
+|   |   +-- AttachRepoModal.tsx   # Repo search + single-select attachment
+|   |   +-- PromoteModal.tsx      # Two-step promotion flow (setup → confirm)
 |   +-- auth/               # Auth components
 |   |   +-- AuthStepper.tsx       # Stepper flow orchestrator
 |   |   +-- AuthMethodPicker.tsx  # Token vs PIN selection
@@ -728,6 +788,7 @@ The server handles SIGINT/SIGTERM with ordered cleanup:
 | `config/workspaces.json` | Workspace OAuth tokens |
 | `config/mcp-servers.json` | MCP server configurations |
 | `config/pipeline-monitors.json` | CI/CD pipeline monitor state |
+| `config/ideas.json` | Saved ideas (brainstorming sessions) |
 | `config/skills/*.md` | Custom skill definitions |
 
 ## Ports and Services

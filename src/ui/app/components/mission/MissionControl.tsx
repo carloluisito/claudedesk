@@ -7,9 +7,14 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Plus } from 'lucide-react';
+import { Settings, Lightbulb, FolderGit2 } from 'lucide-react';
 import { Logo } from './Logo';
 import { OnboardingFlow } from './OnboardingFlow';
+import { IdeaView } from '../idea/IdeaView';
+import { IdeaPanel } from '../idea/IdeaPanel';
+import { AttachRepoModal } from '../idea/AttachRepoModal';
+import { PromoteModal } from '../idea/PromoteModal';
+import { useIdeaStore, registerIdeaWSHandlers } from '../../store/ideaStore';
 
 import { PhaseNavigator, Phase, ExistingPR } from './PhaseNavigator';
 import { RepoDock, RepoStatus } from './RepoDock';
@@ -52,6 +57,11 @@ export default function MissionControl() {
   const agents = useAgents();
   const ui = useTerminalUIStore();
   const { repos, workspaces, loadData } = useAppStore();
+  const ideaStore = useIdeaStore();
+
+  // Idea modal state
+  const [showAttachModal, setShowAttachModal] = useState(false);
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
 
   // Local state
   const [activePhase, setActivePhase] = useState<Phase>(initialPhase);
@@ -215,23 +225,53 @@ export default function MissionControl() {
     navigate(`${basePath}?${params.toString()}`, { replace: true });
   }, [activePhase, activeSessionId, navigate, searchParams]);
 
+  // Load ideas on mount
+  useEffect(() => {
+    ideaStore.loadIdeas();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Register idea WS handlers when WebSocket connects
+  const terminalWs = useTerminalStore((s) => s.ws);
+  const wsRef = useRef<WebSocket | null>(null);
+  useEffect(() => {
+    if (terminalWs && terminalWs !== wsRef.current) {
+      wsRef.current = terminalWs;
+      registerIdeaWSHandlers(terminalWs);
+    }
+  }, [terminalWs]);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Command palette
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        ui.openCommandPalette();
+        // If idea panel is open, focus its search
+        if (ideaStore.showIdeaPanel) {
+          ideaStore.setIdeaPanelSearch('');
+        } else {
+          ui.openCommandPalette();
+        }
       }
       // Ctrl+Shift+T: New session
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'T') {
         e.preventDefault();
         ui.openNewSession();
       }
+      // Ctrl+Shift+I: New idea
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+        ideaStore.createIdea();
+      }
+      // Ctrl+B: Toggle idea panel
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        ideaStore.toggleIdeaPanel();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [ui]);
+  }, [ui, ideaStore]);
 
   // Render message callback
   const renderMessage = useCallback(
@@ -405,7 +445,151 @@ export default function MissionControl() {
       );
     }
 
-    // Has workspaces but no session -> show branded empty state
+    // Check if an idea is active (no session but idea selected)
+    if (ideaStore.activeIdeaId) {
+      const activeIdea = ideaStore.ideas.find(i => i.id === ideaStore.activeIdeaId);
+      if (activeIdea) {
+        return (
+          <div className="h-screen flex flex-col bg-[#0a0d14] text-white overflow-hidden">
+            {/* Header */}
+            <header className="relative z-10 flex items-center px-4 py-3 border-b border-purple-500/10">
+              <div className="flex items-center">
+                <Logo size="lg" />
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                {/* Quota chips */}
+                <div className="hidden lg:flex items-center gap-2">
+                  <QuotaChip
+                    label="5-hour"
+                    pct={quota ? Math.round(quota.five_hour.utilization * 100) : undefined}
+                    resetTime={quota ? getRelativeResetTime(quota.five_hour.resets_at) : undefined}
+                    onClick={() => ui.openOverlay('usage-dashboard')}
+                    isHourly={true}
+                  />
+                  <QuotaChip
+                    label="Weekly"
+                    pct={quota ? Math.round(quota.seven_day.utilization * 100) : undefined}
+                    resetTime={quota ? getRelativeResetTime(quota.seven_day.resets_at) : undefined}
+                    onClick={() => ui.openOverlay('usage-dashboard')}
+                    isHourly={false}
+                  />
+                </div>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="p-2 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors"
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+              </div>
+            </header>
+
+            {/* Idea View + Panel layout */}
+            <div className="relative z-10 flex-1 flex min-h-0">
+              <IdeaView
+                onOpenAttachModal={() => setShowAttachModal(true)}
+                onOpenPromoteModal={() => setShowPromoteModal(true)}
+              />
+              {ideaStore.showIdeaPanel && (
+                <IdeaPanel
+                  onClose={() => ideaStore.toggleIdeaPanel()}
+                />
+              )}
+            </div>
+
+            {/* RepoDock with ideas */}
+            <RepoDock
+              repos={[]}
+              onRepoClick={() => {}}
+              onRepoRemove={async () => {}}
+              ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+              activeIdeaId={ideaStore.activeIdeaId}
+              onIdeaClick={(id) => ideaStore.switchIdea(id)}
+              onIdeaClose={(id) => ideaStore.closeIdea(id)}
+              onNewIdea={() => ideaStore.createIdea()}
+              onNewSession={() => ui.openNewSession()}
+            />
+
+            {/* Modals */}
+            {showAttachModal && (
+              <AttachRepoModal
+                idea={activeIdea}
+                repos={repos}
+                onAttach={(repoId) => {
+                  ideaStore.attachToRepo(ideaStore.activeIdeaId!, repoId);
+                  setShowAttachModal(false);
+                }}
+                onClose={() => setShowAttachModal(false)}
+              />
+            )}
+            {showPromoteModal && (
+              <PromoteModal
+                idea={activeIdea}
+                onPromote={async (opts) => {
+                  await ideaStore.promoteIdea(ideaStore.activeIdeaId!, opts);
+                  setShowPromoteModal(false);
+                }}
+                onClose={() => setShowPromoteModal(false)}
+              />
+            )}
+
+            {/* Overlay Manager for new session modal */}
+            <OverlayManager
+              newSessionProps={{
+                onCreateSession: terminal.handleCreateSession,
+                workspaces: terminal.workspaces,
+                repos: terminal.repos,
+                isLoadingAppData: terminal.isLoadingAppData,
+                selectedWorkspaceId: terminal.selectedWorkspaceId,
+                onWorkspaceChange: terminal.setSelectedWorkspaceId,
+                selectedRepoIds: terminal.selectedRepoIds,
+                onToggleRepoSelection: terminal.toggleRepoSelection,
+                repoSearch: terminal.repoSearch,
+                onRepoSearchChange: terminal.setRepoSearch,
+                highlightedRepoIndex: terminal.highlightedRepoIndex,
+                onHighlightedRepoIndexChange: terminal.setHighlightedRepoIndex,
+                filteredRepos: terminal.filteredRepos,
+                reposByWorkspace: terminal.reposByWorkspace,
+                showCreateRepoForm: terminal.showCreateRepoForm,
+                onShowCreateRepoForm: terminal.setShowCreateRepoForm,
+                newRepoName: terminal.newRepoName,
+                onNewRepoNameChange: terminal.setNewRepoName,
+                createRepoWorkspaceId: terminal.createRepoWorkspaceId,
+                onCreateRepoWorkspaceIdChange: terminal.setCreateRepoWorkspaceId,
+                isCreatingRepo: terminal.isCreatingRepo,
+                createRepoError: terminal.createRepoError,
+                onCreateRepoInline: terminal.handleCreateRepoInline,
+                worktreeAction: terminal.worktreeAction,
+                onWorktreeActionChange: terminal.setWorktreeAction,
+                worktreeBranch: terminal.worktreeBranch,
+                onWorktreeBranchChange: terminal.setWorktreeBranch,
+                worktreeBaseBranch: terminal.worktreeBaseBranch,
+                onWorktreeBaseBranchChange: terminal.setWorktreeBaseBranch,
+                availableBranches: terminal.availableBranches,
+                loadingBranches: terminal.loadingBranches,
+                mainBranch: terminal.mainBranch,
+                existingWorktrees: terminal.existingWorktrees,
+                selectedWorktreePath: terminal.selectedWorktreePath,
+                onSelectedWorktreePathChange: terminal.setSelectedWorktreePath,
+                loadingWorktrees: terminal.loadingWorktrees,
+                onGitInit: terminal.handleGitInit,
+              }}
+              sessions={[]}
+              currentSessionId={null}
+              messages={[]}
+              sessionName=""
+              quota={quota}
+              onRefreshQuota={fetchQuota}
+            />
+
+            <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
+          </div>
+        );
+      }
+    }
+
+    // Has workspaces but no session -> show branded empty state with dual CTAs
+    const savedIdeas = ideaStore.ideas.filter(i => i.status === 'saved');
+
     return (
       <div className="h-screen flex flex-col bg-[#05070c] text-white overflow-hidden">
         {/* Background texture — same as active state */}
@@ -429,7 +613,7 @@ export default function MissionControl() {
           </div>
         </header>
 
-        {/* Center content — branded empty state */}
+        {/* Center content — branded empty state with dual CTAs */}
         <main className="relative z-10 flex-1 flex items-center justify-center px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -444,28 +628,61 @@ export default function MissionControl() {
               </div>
 
               <h1 className="text-2xl font-semibold text-white mb-3">
-                Start a session
+                Start a conversation
               </h1>
               <p className="text-sm text-white/50 leading-relaxed mb-8 max-w-sm mx-auto">
-                Create a session to begin prompting, reviewing, and shipping code with Claude.
+                No repo? No problem.
               </p>
 
-              <button
-                onClick={() => ui.openNewSession()}
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
-              >
-                <Plus className="h-4 w-4" />
-                Create Session
-              </button>
+              {/* Dual CTAs */}
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <button
+                  onClick={() => ideaStore.createIdea()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-purple-500/15 px-6 py-3 text-sm font-semibold text-purple-200 ring-1 ring-purple-500/20 hover:bg-purple-500/25 transition-all"
+                >
+                  <Lightbulb className="h-4 w-4" />
+                  New Idea
+                </button>
+                <button
+                  onClick={() => ui.openNewSession()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+                >
+                  <FolderGit2 className="h-4 w-4" />
+                  New Session
+                </button>
+              </div>
 
-              {/* Keyboard hint */}
-              <p className="mt-4 text-xs text-white/25">
-                or press{' '}
+              {/* Keyboard hints */}
+              <p className="text-xs text-white/25">
                 <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-mono text-[11px]">
+                  Ctrl+Shift+I
+                </kbd>
+                {' '}idea{' '}
+                <kbd className="ml-2 px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-mono text-[11px]">
                   Ctrl+Shift+T
                 </kbd>
+                {' '}session
               </p>
             </div>
+
+            {/* Recent ideas */}
+            {savedIdeas.length > 0 && (
+              <div className="mt-8">
+                <p className="text-xs text-white/30 uppercase tracking-wider mb-3">Recent Ideas</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {savedIdeas.slice(0, 3).map((idea) => (
+                    <button
+                      key={idea.id}
+                      onClick={() => ideaStore.switchIdea(idea.id)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-purple-500/5 px-4 py-2.5 text-sm text-white/70 ring-1 ring-purple-500/10 hover:bg-purple-500/10 hover:text-white/90 transition-all"
+                    >
+                      <Lightbulb className="h-3.5 w-3.5 text-purple-400" />
+                      <span className="truncate max-w-[120px]">{idea.title || 'Untitled Idea'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         </main>
 
@@ -514,12 +731,161 @@ export default function MissionControl() {
           currentSessionId={null}
           messages={[]}
           sessionName=""
+          quota={quota}
+          onRefreshQuota={fetchQuota}
         />
 
         {/* Settings Drawer */}
         <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
       </div>
     );
+  }
+
+  // Active idea takes priority over active session view
+  if (ideaStore.activeIdeaId) {
+    const activeIdea = ideaStore.ideas.find(i => i.id === ideaStore.activeIdeaId);
+    if (activeIdea) {
+      return (
+        <div className="h-screen flex flex-col bg-[#0a0d14] text-white overflow-hidden">
+          {/* Header */}
+          <header className="relative z-10 flex items-center px-4 py-3 border-b border-purple-500/10">
+            <div className="flex items-center">
+              <Logo size="lg" />
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Quota chips */}
+              <div className="hidden lg:flex items-center gap-2">
+                <QuotaChip
+                  label="5-hour"
+                  pct={quota ? Math.round(quota.five_hour.utilization * 100) : undefined}
+                  resetTime={quota ? getRelativeResetTime(quota.five_hour.resets_at) : undefined}
+                  onClick={() => ui.openOverlay('usage-dashboard')}
+                  isHourly={true}
+                />
+                <QuotaChip
+                  label="Weekly"
+                  pct={quota ? Math.round(quota.seven_day.utilization * 100) : undefined}
+                  resetTime={quota ? getRelativeResetTime(quota.seven_day.resets_at) : undefined}
+                  onClick={() => ui.openOverlay('usage-dashboard')}
+                  isHourly={false}
+                />
+              </div>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 rounded-lg text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </div>
+          </header>
+
+          {/* Idea View + Panel layout */}
+          <div className="relative z-10 flex-1 flex min-h-0">
+            <IdeaView
+              onOpenAttachModal={() => setShowAttachModal(true)}
+              onOpenPromoteModal={() => setShowPromoteModal(true)}
+            />
+            {ideaStore.showIdeaPanel && (
+              <IdeaPanel
+                onClose={() => ideaStore.toggleIdeaPanel()}
+              />
+            )}
+          </div>
+
+          {/* RepoDock with ideas + sessions */}
+          <RepoDock
+            repos={repoStatuses}
+            onRepoClick={(sessionId) => {
+              ideaStore.clearActiveIdea();
+              switchSession(sessionId);
+            }}
+            onRepoRemove={async (sessionId) => {
+              await closeSession(sessionId);
+            }}
+            ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+            activeIdeaId={ideaStore.activeIdeaId}
+            onIdeaClick={(id) => ideaStore.switchIdea(id)}
+            onIdeaClose={(id) => ideaStore.closeIdea(id)}
+            onNewIdea={() => ideaStore.createIdea()}
+            onNewSession={() => ui.openNewSession()}
+          />
+
+          {/* Modals */}
+          {showAttachModal && (
+            <AttachRepoModal
+              idea={activeIdea}
+              repos={repos}
+              onAttach={(repoId) => {
+                ideaStore.attachToRepo(ideaStore.activeIdeaId!, repoId);
+                setShowAttachModal(false);
+              }}
+              onClose={() => setShowAttachModal(false)}
+            />
+          )}
+          {showPromoteModal && (
+            <PromoteModal
+              idea={activeIdea}
+              onPromote={async (opts) => {
+                await ideaStore.promoteIdea(ideaStore.activeIdeaId!, opts);
+                setShowPromoteModal(false);
+              }}
+              onClose={() => setShowPromoteModal(false)}
+            />
+          )}
+
+          {/* Overlay Manager for new session modal */}
+          <OverlayManager
+            newSessionProps={{
+              onCreateSession: terminal.handleCreateSession,
+              workspaces: terminal.workspaces,
+              repos: terminal.repos,
+              isLoadingAppData: terminal.isLoadingAppData,
+              selectedWorkspaceId: terminal.selectedWorkspaceId,
+              onWorkspaceChange: terminal.setSelectedWorkspaceId,
+              selectedRepoIds: terminal.selectedRepoIds,
+              onToggleRepoSelection: terminal.toggleRepoSelection,
+              repoSearch: terminal.repoSearch,
+              onRepoSearchChange: terminal.setRepoSearch,
+              highlightedRepoIndex: terminal.highlightedRepoIndex,
+              onHighlightedRepoIndexChange: terminal.setHighlightedRepoIndex,
+              filteredRepos: terminal.filteredRepos,
+              reposByWorkspace: terminal.reposByWorkspace,
+              showCreateRepoForm: terminal.showCreateRepoForm,
+              onShowCreateRepoForm: terminal.setShowCreateRepoForm,
+              newRepoName: terminal.newRepoName,
+              onNewRepoNameChange: terminal.setNewRepoName,
+              createRepoWorkspaceId: terminal.createRepoWorkspaceId,
+              onCreateRepoWorkspaceIdChange: terminal.setCreateRepoWorkspaceId,
+              isCreatingRepo: terminal.isCreatingRepo,
+              createRepoError: terminal.createRepoError,
+              onCreateRepoInline: terminal.handleCreateRepoInline,
+              worktreeAction: terminal.worktreeAction,
+              onWorktreeActionChange: terminal.setWorktreeAction,
+              worktreeBranch: terminal.worktreeBranch,
+              onWorktreeBranchChange: terminal.setWorktreeBranch,
+              worktreeBaseBranch: terminal.worktreeBaseBranch,
+              onWorktreeBaseBranchChange: terminal.setWorktreeBaseBranch,
+              availableBranches: terminal.availableBranches,
+              loadingBranches: terminal.loadingBranches,
+              mainBranch: terminal.mainBranch,
+              existingWorktrees: terminal.existingWorktrees,
+              selectedWorktreePath: terminal.selectedWorktreePath,
+              onSelectedWorktreePathChange: terminal.setSelectedWorktreePath,
+              loadingWorktrees: terminal.loadingWorktrees,
+              onGitInit: terminal.handleGitInit,
+            }}
+            sessions={[]}
+            currentSessionId={null}
+            messages={[]}
+            sessionName=""
+            quota={quota}
+            onRefreshQuota={fetchQuota}
+          />
+
+          <SettingsDrawer isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        </div>
+      );
+    }
   }
 
   return (
@@ -668,13 +1034,20 @@ export default function MissionControl() {
       <RepoDock
         repos={repoStatuses}
         onRepoClick={(sessionId) => {
-          // Switch to the clicked session
+          ideaStore.clearActiveIdea();
           switchSession(sessionId);
         }}
         onRepoRemove={async (sessionId) => {
-          // Close the session (may take time if deleting worktree)
           await closeSession(sessionId);
         }}
+        ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+        activeIdeaId={ideaStore.activeIdeaId}
+        onIdeaClick={(id) => {
+          ideaStore.switchIdea(id);
+        }}
+        onIdeaClose={(id) => ideaStore.closeIdea(id)}
+        onNewIdea={() => ideaStore.createIdea()}
+        onNewSession={() => ui.openNewSession()}
       />
 
       {/* Hidden file input */}

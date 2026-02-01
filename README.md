@@ -61,6 +61,60 @@ It is not an IDE. It is not a replacement for Claude Code. It is a session manag
 - **MCP Server Integration** - Configure and manage MCP servers for external tools (GitHub, PostgreSQL, Slack, and more). Tool invocation during sessions coming soon.
 - **CI/CD Pipeline Monitoring** - Automatically monitor GitHub Actions and GitLab CI after shipping code, with error categorization and Fix CI prompt composition
 - **Smart Context Management** - Automatic token budget tracking with visual context gauge, AI-powered conversation summarization using Haiku when approaching limits, and session splitting when context fills up to maintain response quality
+- **Idea Building** - Repo-free brainstorming sessions with Claude. Start exploring ideas without committing to a project, then promote to a full session when ready. Purple accent, lightbulb iconography, zero-ceremony creation.
+
+## Idea Building
+
+ClaudeDesk includes a brainstorming mode for exploring concepts without a repository. Ideas are lightweight, repo-free conversations with Claude focused on creative exploration.
+
+### Key Concepts
+
+- **Ephemeral Ideas** — Live in memory only, lost on restart. Zero ceremony to create.
+- **Saved Ideas** — Persisted to `config/ideas.json` for later reference.
+- **Repo Attachment** — Link ideas to existing repos for read-only codebase context (no modifications).
+- **Promotion** — Graduate ideas to full projects with git init, optional scaffold, and session creation.
+
+### Workflow
+
+1. **Create** — Press `Ctrl+Shift+I` or click "New Idea" in the RepoDock [+] menu
+2. **Brainstorm** — Chat with Claude in a purple-themed, repo-free environment
+3. **Save** (optional) — Pin ephemeral ideas to persist across restarts
+4. **Attach** (optional) — Link existing repos so Claude can browse code for context
+5. **Promote** — Graduate to a full project with a two-step modal (name, directory, scaffold options)
+
+### Idea Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+I` | Create new idea |
+| `Ctrl+B` | Toggle idea panel sidebar |
+| `Ctrl+Enter` | Send message |
+| `Esc` | Close modal / cancel title edit |
+
+### Idea API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/ideas` | Create idea (ephemeral) |
+| `GET` | `/api/ideas` | List saved ideas |
+| `GET` | `/api/ideas/:id` | Get idea with messages |
+| `PUT` | `/api/ideas/:id` | Update title, tags, status |
+| `DELETE` | `/api/ideas/:id` | Delete idea + cleanup |
+| `POST` | `/api/ideas/:id/save` | Pin ephemeral → saved |
+| `POST` | `/api/ideas/:id/cancel` | Cancel running Claude process |
+| `POST` | `/api/ideas/:id/promote` | Graduate to project |
+| `POST` | `/api/ideas/:id/attach` | Link to existing repo |
+| `POST` | `/api/ideas/:id/detach` | Unlink from repo |
+
+### WebSocket Events
+
+| Event | Direction | Purpose |
+|-------|-----------|---------|
+| `subscribe-idea` | Client → Server | Subscribe to idea updates |
+| `unsubscribe-idea` | Client → Server | Unsubscribe from idea |
+| `idea-message` | Client → Server | Send message to Claude |
+| `idea-cancel` | Client → Server | Cancel running operation |
+| `idea-set-mode` | Client → Server | Switch plan/direct mode |
 
 ## File Review & Approval
 
@@ -311,6 +365,9 @@ Configure in **Settings > System > Context Management** or in `config/settings.j
 | **Escape** | Stop Claude's current generation (preserves partial response) |
 | **Enter** | Send message (in composer) |
 | **Shift+Enter** | New line in composer |
+| **Ctrl+Shift+I** | Create new idea |
+| **Ctrl+B** | Toggle idea panel sidebar |
+| **Ctrl+Enter** | Send message in idea chat |
 
 ## Installation
 
@@ -469,6 +526,7 @@ export CLAUDEDESK_DATA_DIR=/custom/path
     mcp-servers.json       # MCP server configurations (auto-created)
     pipeline-monitors.json # CI/CD pipeline monitor state (auto-created)
     terminal-sessions.json # Persisted session data
+    ideas.json             # Saved ideas (brainstorming sessions)
     skills/                # Custom Claude skills
     usage/                 # API usage tracking
   artifacts/               # Session artifacts and exports
@@ -1426,17 +1484,21 @@ src/
   core/          # Claude invoker, git operations, session management
                  # MCP: mcp-client.ts, mcp-manager.ts
                  # CI/CD: pipeline-monitor.ts
+                 # Ideas: idea-manager.ts
+  api/           # Express routes (terminal, idea, settings, etc.)
   config/        # Settings, workspaces, skills
                  # MCP: mcp-servers.ts (registry), mcp-catalog.ts (templates)
   ui/app/        # React frontend
     components/
+      idea/             # Idea Building (IdeaView, IdeaPanel, IdeaCard, modals)
       mission/          # MissionControl landing page and phased workflow
       settings/         # MCP, CI/CD, cache, update settings panels
       terminal/         # Terminal components (Composer, MessageItem, ActivityTimeline, etc.)
     hooks/              # useTerminal, useMCPServers, useAgents, useRemoteAccess, etc.
-    store/              # terminalStore, appStore, runStore, terminalUIStore, themeStore
+    store/              # terminalStore, appStore, runStore, terminalUIStore, themeStore, ideaStore
 config/
   repos.json     # Repository configuration (example)
+  ideas.json     # Saved ideas (auto-created)
   skills/        # Custom skill definitions
 deploy/
   docker-compose.yml  # Production Docker deployment

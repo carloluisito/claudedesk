@@ -106,6 +106,7 @@ Inside the data directory:
 - `config/workspaces.json` - Workspace configurations
 - `config/mcp-servers.json` - MCP server configurations
 - `config/pipeline-monitors.json` - CI/CD pipeline monitor state
+- `config/ideas.json` - Saved ideas (brainstorming sessions)
 - `config/skills/` - Custom Claude skills
 
 ## Mobile Access

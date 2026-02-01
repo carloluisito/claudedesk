@@ -33,6 +33,8 @@ import { appManager } from './core/app-manager.js';
 import { remoteTunnelManager } from './core/remote-tunnel-manager.js';
 import { mcpManager } from './core/mcp-manager.js';
 import { updateChecker } from './core/update-checker.js';
+import { ideaManager } from './core/idea-manager.js';
+import { ideaRouter } from './api/idea-routes.js';
 
 export interface StartServerOptions {
   port?: number;
@@ -102,6 +104,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   app.use('/api', apiRouter);
   app.use('/api/terminal', terminalRouter);
   app.use('/api/apps', appRouter);
+  app.use('/api/ideas', ideaRouter);
 
   // Static UI files - serve from Vite build
   // Use __dirname to find client files relative to this file (works with global npm install)
@@ -272,6 +275,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
         ? `Terminal: ${sessionCount} session(s)`
         : 'Terminal: ready';
 
+      const ideaCount = ideaManager.getAllSavedIdeas().length;
+      const ideaStatus = ideaCount > 0
+        ? `Ideas: ${ideaCount} saved`
+        : 'Ideas: ready';
+
       const networkInfo = HOST === '0.0.0.0'
         ? `Network: ${HOST}:${PORT} (remote access enabled)`
         : `Network: localhost only`;
@@ -362,10 +370,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
         console.warn('[Shutdown] Failed to shutdown MCP:', err);
       }
 
-      // 8. Stop update checker
+      // 8. Stop idea manager Claude processes
+      console.log('[Shutdown] Stopping idea Claude processes...');
+      ideaManager.shutdown();
+
+      // 9. Stop update checker
       updateChecker.shutdown();
 
-      // 9. Close HTTP server
+      // 10. Close HTTP server
       console.log('[Shutdown] Closing HTTP server...');
       server.close();
 

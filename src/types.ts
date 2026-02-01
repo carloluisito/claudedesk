@@ -673,3 +673,49 @@ export interface PrerequisiteCheckResult {
   version?: string;
   error?: string;
 }
+
+// =============================================================================
+// Idea (Repo-Free Ideation) Types
+// =============================================================================
+
+export type IdeaStatus = 'ephemeral' | 'saved';
+
+export interface IdeaChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  isStreaming?: boolean;
+}
+
+export interface IdeaQueuedMessage {
+  id: string;
+  content: string;
+  mode: 'plan' | 'direct';
+  queuedAt: string;
+}
+
+export interface Idea {
+  id: string;                       // "idea-<uuid>"
+  title?: string;                   // Auto-generated or user-set
+  status: IdeaStatus;
+  messages: IdeaChatMessage[];
+  claudeSessionId?: string;         // For --resume with Claude CLI
+  chatStatus: 'idle' | 'running' | 'error';
+  mode: 'plan' | 'direct';
+  createdAt: string;
+  lastActivityAt: string;
+  savedAt?: string;
+  promotedToSessionId?: string;     // If graduated to a session
+  promotedToRepoId?: string;        // If graduated and created a repo
+  attachedRepoIds?: string[];       // Linked repos (for cwd context)
+  tags?: string[];
+  messageQueue: IdeaQueuedMessage[];
+}
+
+export interface PromoteOptions {
+  repoName: string;
+  directory: string;
+  generateScaffold: boolean;
+  transferHistory: boolean;
+}

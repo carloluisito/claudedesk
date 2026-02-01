@@ -15,9 +15,12 @@ import {
   Loader2,
   FolderGit2,
   Link2,
+  Lightbulb,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useTerminalUIStore } from '../../store/terminalUIStore';
+import type { Idea } from '../../../../types';
 
 export interface RepoStatus {
   id: string;
@@ -35,6 +38,13 @@ interface RepoDockProps {
   onRepoClick: (repoId: string) => void;
   onRepoRemove: (repoId: string) => Promise<void> | void;
   className?: string;
+  // Idea support
+  ideaItems?: Idea[];
+  activeIdeaId?: string | null;
+  onIdeaClick?: (ideaId: string) => void;
+  onIdeaClose?: (ideaId: string) => void;
+  onNewIdea?: () => void;
+  onNewSession?: () => void;
 }
 
 export function RepoDock({
@@ -42,9 +52,16 @@ export function RepoDock({
   onRepoClick,
   onRepoRemove,
   className,
+  ideaItems = [],
+  activeIdeaId,
+  onIdeaClick,
+  onIdeaClose,
+  onNewIdea,
+  onNewSession,
 }: RepoDockProps) {
   const { openOverlay } = useTerminalUIStore();
   const [closingSessionIds, setClosingSessionIds] = useState<Set<string>>(new Set());
+  const [showAddMenu, setShowAddMenu] = useState(false);
 
   const handleRemove = useCallback(async (sessionId: string) => {
     setClosingSessionIds((prev) => new Set(prev).add(sessionId));
@@ -103,6 +120,64 @@ export function RepoDock({
       </div>
 
       <div className="h-4 w-px bg-white/10 mx-1" />
+
+      {/* Idea pills */}
+      {ideaItems.length > 0 && (
+        <>
+          {ideaItems.map((idea) => {
+            const isActive = idea.id === activeIdeaId;
+            return (
+              <motion.div
+                key={idea.id}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                layout
+                className="flex-shrink-0"
+              >
+                <button
+                  onClick={() => onIdeaClick?.(idea.id)}
+                  className={cn(
+                    'group flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-all ring-1',
+                    isActive
+                      ? 'ring-purple-500/50 bg-purple-500/10'
+                      : 'ring-white/10 bg-white/5 hover:bg-white/10 hover:ring-white/20'
+                  )}
+                >
+                  <Lightbulb className={cn(
+                    'h-3 w-3',
+                    isActive ? 'text-purple-400' : 'text-purple-400/60'
+                  )} />
+
+                  {/* Ephemeral dot */}
+                  {idea.status === 'ephemeral' && (
+                    <Circle className="h-2 w-2 fill-purple-400 text-purple-400" />
+                  )}
+
+                  <span className={cn(
+                    'font-medium max-w-[120px] truncate',
+                    isActive ? 'text-white' : 'text-white/70'
+                  )}>
+                    {idea.title || 'Untitled Idea'}
+                  </span>
+
+                  {/* Close button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onIdeaClose?.(idea.id);
+                    }}
+                    className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-opacity"
+                  >
+                    <X className="h-3 w-3 text-white/50" />
+                  </button>
+                </button>
+              </motion.div>
+            );
+          })}
+          <div className="h-4 w-px bg-white/10 mx-1" />
+        </>
+      )}
 
       {/* Repo pills */}
       <div className="flex items-center gap-2 flex-1 overflow-x-auto scrollbar-none">
@@ -192,16 +267,72 @@ export function RepoDock({
         </AnimatePresence>
       </div>
 
-      {/* Add Session button */}
-      <motion.button
-        onClick={() => openOverlay('new-session')}
-        className="flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/60 ring-1 ring-white/10 hover:bg-white/10 hover:ring-white/20 hover:text-white/80 transition-all"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        <Plus className="h-4 w-4" />
-        <span className="hidden sm:inline">Add Session</span>
-      </motion.button>
+      {/* Add button — dropdown when idea handlers are available */}
+      {onNewIdea ? (
+        <div className="relative">
+          <motion.button
+            onClick={() => setShowAddMenu(!showAddMenu)}
+            className="flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/60 ring-1 ring-white/10 hover:bg-white/10 hover:ring-white/20 hover:text-white/80 transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <Plus className="h-4 w-4" />
+            <ChevronDown className="h-3 w-3" />
+          </motion.button>
+
+          {/* Dropdown menu */}
+          <AnimatePresence>
+            {showAddMenu && (
+              <>
+                {/* Backdrop */}
+                <div
+                  className="fixed inset-0 z-50"
+                  onClick={() => setShowAddMenu(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute bottom-full right-0 mb-2 z-50 w-48 rounded-xl bg-[#0d1117] ring-1 ring-white/10 shadow-xl overflow-hidden"
+                >
+                  <button
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      onNewIdea();
+                    }}
+                    className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-white/80 hover:bg-purple-500/10 hover:text-purple-200 transition-colors"
+                  >
+                    <Lightbulb className="h-4 w-4 text-purple-400" />
+                    New Idea
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      if (onNewSession) onNewSession();
+                      else openOverlay('new-session');
+                    }}
+                    className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-white/80 hover:bg-blue-500/10 hover:text-blue-200 transition-colors"
+                  >
+                    <FolderGit2 className="h-4 w-4 text-blue-400" />
+                    New Session
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <motion.button
+          onClick={() => openOverlay('new-session')}
+          className="flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/60 ring-1 ring-white/10 hover:bg-white/10 hover:ring-white/20 hover:text-white/80 transition-all"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Add Session</span>
+        </motion.button>
+      )}
     </div>
   );
 }
