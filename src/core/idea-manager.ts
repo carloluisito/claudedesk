@@ -4,6 +4,7 @@ import { join } from 'path';
 import treeKill from 'tree-kill';
 import { claudeInvoker, ClaudeStreamEvent } from './claude-invoker.js';
 import { wsManager } from './ws-manager.js';
+import { contextManager } from './context-manager.js';
 import { repoRegistry } from '../config/repos.js';
 import { settingsManager } from '../config/settings.js';
 import type { Idea, IdeaStatus, IdeaChatMessage, IdeaQueuedMessage, PromoteOptions } from '../types.js';
@@ -203,6 +204,9 @@ class IdeaManager {
     // Kill Claude process if running
     this.cancelClaude(id);
 
+    // Clean up context data
+    contextManager.clearSession(id);
+
     // Remove temp dir
     const tempDir = join(getIdeaTempDir(), id);
     if (existsSync(tempDir)) {
@@ -396,6 +400,19 @@ class IdeaManager {
               idea.claudeSessionId = event.sessionId;
               console.log(`[IdeaManager] Captured Claude session ID for ${ideaId}: ${event.sessionId}`);
             }
+
+            // Context management: track actual token usage and broadcast state
+            if (event.usage?.inputTokens) {
+              contextManager.updateActualUsage(ideaId, event.usage.inputTokens);
+            }
+            const contextState = contextManager.getContextState(ideaId, idea.messages, event.model);
+            contextManager.broadcastContextState(ideaId, contextState);
+
+            // Check if split should be suggested
+            if (contextManager.shouldSuggestSplit(contextState) && !contextManager.isSplitSuggested(ideaId)) {
+              contextManager.markSplitSuggested(ideaId);
+              contextManager.broadcastSplitSuggested(ideaId);
+            }
           } else if (event.type === 'error' && event.content) {
             wsManager.broadcastToSession(ideaId, {
               type: 'activity',
@@ -581,7 +598,7 @@ class IdeaManager {
 
   // ─── Promote to Project ────────────────────────────────────────────────────
 
-  async promoteIdea(ideaId: string, options: PromoteOptions): Promise<{ sessionId: string; repoId: string }> {
+  async promoteIdea(ideaId: string, options: PromoteOptions): Promise<{ sessionId: string; repoId: string; handoffSummary: string }> {
     const idea = this.ideas.get(ideaId);
     if (!idea) throw new Error(`Idea not found: ${ideaId}`);
     if (idea.chatStatus === 'running') throw new Error('Cannot promote while Claude is running');
@@ -619,6 +636,7 @@ class IdeaManager {
     });
 
     // Update idea
+    idea.status = 'promoted';
     idea.promotedToRepoId = repoId;
     idea.lastActivityAt = new Date().toISOString();
 
@@ -631,11 +649,11 @@ class IdeaManager {
         .join('\n\n');
     }
 
-    if (idea.status === 'saved') this.saveIdeas();
+    this.saveIdeas();
 
-    console.log(`[IdeaManager] Promoted idea ${ideaId} to repo ${repoId} at ${repoPath}`);
+    console.log(`[IdeaManager] Promoted idea ${ideaId} to repo ${repoId} at ${repoPath} (transferHistory=${transferHistory}, messages=${idea.messages.length}, handoffLength=${handoffSummary.length})`);
 
-    return { sessionId: '', repoId }; // Session creation happens on frontend side
+    return { sessionId: '', repoId, handoffSummary }; // Session creation happens on frontend side
   }
 
   // ─── WebSocket Handlers ────────────────────────────────────────────────────
@@ -701,6 +719,27 @@ class IdeaManager {
         wsManager.unsubscribeFromSession(client, ideaId);
       }
     });
+  }
+
+  // ─── Context Management ────────────────────────────────────────────────
+
+  getContextState(ideaId: string) {
+    const idea = this.ideas.get(ideaId);
+    if (!idea) return null;
+    return contextManager.getContextState(ideaId, idea.messages);
+  }
+
+  async summarizeIdea(ideaId: string): Promise<void> {
+    const idea = this.ideas.get(ideaId);
+    if (!idea) throw new Error(`Idea not found: ${ideaId}`);
+
+    const workingDir = this.getWorkingDir(idea);
+    const artifactsDir = join(getIdeaArtifactsDir(), ideaId);
+    if (!existsSync(artifactsDir)) {
+      mkdirSync(artifactsDir, { recursive: true });
+    }
+
+    await contextManager.summarize(ideaId, idea.messages, workingDir, artifactsDir);
   }
 
   // ─── Shutdown ──────────────────────────────────────────────────────────────

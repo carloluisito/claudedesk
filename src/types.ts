@@ -678,7 +678,7 @@ export interface PrerequisiteCheckResult {
 // Idea (Repo-Free Ideation) Types
 // =============================================================================
 
-export type IdeaStatus = 'ephemeral' | 'saved';
+export type IdeaStatus = 'ephemeral' | 'saved' | 'promoted';
 
 export interface IdeaChatMessage {
   id: string;
@@ -711,6 +711,8 @@ export interface Idea {
   attachedRepoIds?: string[];       // Linked repos (for cwd context)
   tags?: string[];
   messageQueue: IdeaQueuedMessage[];
+  contextState?: ContextState;      // Context utilization tracking
+  splitSuggested?: boolean;         // Whether context split has been suggested
 }
 
 export interface PromoteOptions {

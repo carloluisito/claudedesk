@@ -1,6 +1,6 @@
 # ClaudeDesk Architecture
 
-Technical architecture documentation for ClaudeDesk v3.7.0 - an AI-powered development platform with Claude terminal interface.
+Technical architecture documentation for ClaudeDesk v3.7.1 - an AI-powered development platform with Claude terminal interface.
 
 ## Overview
 
@@ -123,7 +123,7 @@ This dual-mode architecture enables Cloudflare tunnels to work in both environme
 | `tunnel-routes.ts` | `/api/tunnel/*` | Remote tunnel control, QR code generation |
 | `mcp-routes.ts` | `/api/mcp/*` | MCP server configuration and tool management |
 | `system-routes.ts` | `/api/system/*` | Update checking and cache management |
-| `idea-routes.ts` | `/api/ideas/*` | Idea CRUD, save, promote, attach/detach repos |
+| `idea-routes.ts` | `/api/ideas/*` | Idea CRUD, save, promote, attach/detach repos, context state, summarize |
 
 ### Core Modules
 
@@ -331,17 +331,24 @@ Key responsibilities:
 - Claude invocation with ideation-focused system prompt (no git/worktree instructions)
 - Working directory resolution: attached repo path or temp dir at `temp/ideas/<ideaId>/`
 - Persistence: saved ideas stored in `config/ideas.json`
+- Context tracking: integrates with `contextManager` to track token usage, broadcast context state, and trigger Haiku summarization
 - WebSocket handlers: `subscribe-idea`, `idea-message`, `idea-cancel`, `idea-set-mode`
 - Repo attachment/detachment for read-only codebase context
-- Promotion flow: git init + register repo + create terminal session + handoff prompt
-- Cleanup: prune orphaned temp dirs on startup
+- Promotion flow: git init + register repo + build handoff summary from idea messages + return `handoffSummary` to frontend for session creation
+- Cleanup: prune orphaned temp dirs on startup, clear context data on deletion
 - Shares `MAX_ACTIVE_CLAUDE_PROCESSES` (5) limit with terminal sessions
 
 Idea states:
 ```
 ephemeral (memory only) → saved (persisted to ideas.json)
-                        → promoted (graduated to project session)
+                        → promoted (graduated to project session, removed from dock and ideas.json)
 ```
+
+Promotion details:
+- Sets idea status to `promoted`, persists change (removes from `ideas.json` since only `saved` ideas are persisted)
+- Builds `handoffSummary` from idea messages when `transferHistory` is enabled
+- Returns `{ repoId, handoffSummary }` — frontend passes `handoffSummary` to `createSession()` which sets it on the `TerminalSession` object
+- `buildPromptWithContext()` injects `handoffSummary` into Claude's prompt for the first few messages (≤2), giving Claude full context from the brainstorming phase
 
 ## Frontend Architecture
 
@@ -373,7 +380,7 @@ interface TerminalStore {
 ```
 
 Key actions:
-- `createSession()` - Create new session (single or multi-repo)
+- `createSession()` - Create new session (single or multi-repo), accepts optional `handoffSummary` for context transfer from idea promotion
 - `sendMessage()` - Send message via WebSocket
 - `cancelOperation()` - Cancel running Claude process
 - `approvePlan()` - Approve plan mode output with answers
@@ -472,12 +479,14 @@ Key actions:
 - `clearActiveIdea()` - Deselect idea (stays in dock)
 - `closeIdea()` - Remove from dock, cleanup ephemeral ideas
 - `saveIdea()` - Pin ephemeral → saved (persists to ideas.json)
-- `promoteIdea()` - Graduate to project session
+- `promoteIdea()` - Graduate to project session, sets status to `promoted`, returns `{ repoId, handoffSummary }`
 - `attachToRepo()` / `detachFromRepo()` - Link/unlink repos for context
+- `fetchContextState()` - Fetch context utilization via REST (called on mount and message changes)
 
 WebSocket integration:
-- Shares WebSocket connection with terminalStore (lazy require to avoid circular deps)
-- `registerIdeaWSHandlers()` wraps WS onmessage, intercepts `idea-` prefixed events
+- Shares WebSocket connection with terminalStore via `setTerminalStoreRef()` (avoids circular imports in ES modules)
+- `registerIdeaWSHandlers()` wraps WS onmessage and onopen; intercepts `idea-` prefixed events and re-subscribes open ideas on reconnect
+- Handles `context_state_update` and `context_split_suggested` WS events for real-time context tracking
 - Idea messages routed to ideaStore, all other messages pass through to terminalStore
 
 ### Design System
@@ -604,13 +613,13 @@ src/ui/app/
 |   |       +-- ReviewPhase.tsx    # Review phase
 |   |       +-- ShipPhase.tsx      # Ship phase
 |   +-- idea/               # Idea Building components
-|   |   +-- IdeaView.tsx          # Main chat interface (purple accent, lighter bg)
+|   |   +-- IdeaView.tsx          # Main chat interface (purple accent, full-width, context gauge + split banner)
 |   |   +-- IdeaTitleBar.tsx      # Inline title editing + Save/Attach/Promote actions
 |   |   +-- IdeaPanel.tsx         # Right sidebar with search and idea list
 |   |   +-- IdeaList.tsx          # Filtered scrollable idea list
 |   |   +-- IdeaCard.tsx          # Individual idea preview with status badges
 |   |   +-- AttachRepoModal.tsx   # Repo search + single-select attachment
-|   |   +-- PromoteModal.tsx      # Two-step promotion flow (setup → confirm)
+|   |   +-- PromoteModal.tsx      # Two-step promotion flow (setup → confirm), workspace dropdown selector
 |   +-- auth/               # Auth components
 |   |   +-- AuthStepper.tsx       # Stepper flow orchestrator
 |   |   +-- AuthMethodPicker.tsx  # Token vs PIN selection

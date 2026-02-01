@@ -436,15 +436,14 @@ export function useTerminal() {
     }
   }, [selectedRepoIds, fetchBranchesForRepo, fetchWorktreesForRepo]);
 
-  // Connect WebSocket
+  // Connect WebSocket on mount only — reconnection is handled by terminalStore's onclose
   useEffect(() => {
-    if (!isConnected) {
-      connect();
-    }
+    connect();
     return () => {
       disconnect();
     };
-  }, [connect, disconnect, isConnected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect, disconnect]);
 
   // Show connection toast on connection state changes
   useEffect(() => {

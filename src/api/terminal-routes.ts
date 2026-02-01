@@ -351,7 +351,7 @@ function getGitExecOptions(workingDir: string, timeout = 60000): {
 // Create a new terminal session (supports both single repo and multi-repo, and worktree mode)
 terminalRouter.post('/sessions', (req: Request, res: Response) => {
   try {
-    const { repoId, repoIds, worktreeMode, branch, baseBranch, existingWorktreePath } = req.body;
+    const { repoId, repoIds, worktreeMode, branch, baseBranch, existingWorktreePath, handoffSummary } = req.body;
 
     // Support both single repoId and array of repoIds
     let ids: string[];
@@ -394,6 +394,12 @@ terminalRouter.post('/sessions', (req: Request, res: Response) => {
     }
 
     const session = terminalSessionManager.createSession(ids, worktreeOptions);
+
+    // Set handoff summary if provided (e.g., from idea promotion)
+    if (handoffSummary && typeof handoffSummary === 'string') {
+      session.handoffSummary = handoffSummary;
+      console.log(`[TerminalRoute] Set handoff summary on session ${session.id} (${handoffSummary.length} chars)`);
+    }
 
     res.status(201).json({
       success: true,

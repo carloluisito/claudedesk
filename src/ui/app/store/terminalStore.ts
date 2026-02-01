@@ -198,7 +198,7 @@ interface TerminalStore {
   showStartAppModal: boolean;
   // Actions
   loadSessions: (options?: { forceRefresh?: boolean }) => Promise<void>;
-  createSession: (repoIdOrIds: string | string[], options?: { worktreeMode?: boolean; branch?: string; baseBranch?: string; existingWorktreePath?: string }) => Promise<TerminalSession>;
+  createSession: (repoIdOrIds: string | string[], options?: { worktreeMode?: boolean; branch?: string; baseBranch?: string; existingWorktreePath?: string; handoffSummary?: string }) => Promise<TerminalSession>;
   mergeSessions: (sessionIds: string[]) => Promise<TerminalSession>;
   addRepoToSession: (sessionId: string, repoId: string) => Promise<void>;
   removeRepoFromSession: (sessionId: string, repoId: string) => Promise<void>;
@@ -346,11 +346,13 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     }
   },
 
-  createSession: async (repoIdOrIds: string | string[], options?: { worktreeMode?: boolean; branch?: string; baseBranch?: string; existingWorktreePath?: string }) => {
+  createSession: async (repoIdOrIds: string | string[], options?: { worktreeMode?: boolean; branch?: string; baseBranch?: string; existingWorktreePath?: string; handoffSummary?: string }) => {
     // Support both single repoId and array of repoIds, plus worktree options
+    const { handoffSummary, ...restOptions } = options || {};
     const payload = {
       ...(Array.isArray(repoIdOrIds) ? { repoIds: repoIdOrIds } : { repoId: repoIdOrIds }),
-      ...options,
+      ...restOptions,
+      ...(handoffSummary ? { handoffSummary } : {}),
     };
 
     const session = await api<TerminalSession>('POST', '/terminal/sessions', payload);

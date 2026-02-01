@@ -52,9 +52,10 @@ interface IdeaStore {
   sendMessage: (content: string) => void;
   cancelOperation: () => void;
   setMode: (mode: 'plan' | 'direct') => void;
-  promoteIdea: (id: string, opts: PromoteOptions) => Promise<{ sessionId: string; repoId: string }>;
+  promoteIdea: (id: string, opts: PromoteOptions) => Promise<{ sessionId: string; repoId: string; handoffSummary: string }>;
   attachToRepo: (id: string, repoId: string) => Promise<void>;
   detachFromRepo: (id: string, repoId: string) => Promise<void>;
+  fetchContextState: (ideaId: string) => Promise<void>;
   toggleIdeaPanel: () => void;
   setIdeaPanelSearch: (search: string) => void;
 
@@ -246,8 +247,9 @@ export const useIdeaStore = create<IdeaStore>((set, get) => ({
   },
 
   promoteIdea: async (id: string, opts: PromoteOptions) => {
-    const result = await api<{ sessionId: string; repoId: string }>('POST', `/ideas/${id}/promote`, opts);
+    const result = await api<{ sessionId: string; repoId: string; handoffSummary: string }>('POST', `/ideas/${id}/promote`, opts);
     get().updateIdea(id, {
+      status: 'promoted',
       promotedToSessionId: result.sessionId,
       promotedToRepoId: result.repoId,
     });
@@ -262,6 +264,17 @@ export const useIdeaStore = create<IdeaStore>((set, get) => ({
   detachFromRepo: async (id: string, repoId: string) => {
     const result = await api<Idea>('POST', `/ideas/${id}/detach`, { repoId });
     get().updateIdea(id, { attachedRepoIds: result.attachedRepoIds });
+  },
+
+  fetchContextState: async (ideaId: string) => {
+    try {
+      const result = await api<Idea['contextState']>('GET', `/ideas/${ideaId}/context`);
+      if (result) {
+        get().updateIdea(ideaId, { contextState: result });
+      }
+    } catch (error) {
+      console.error('[IdeaStore] Failed to fetch context state:', error);
+    }
   },
 
   toggleIdeaPanel: () => {
@@ -301,19 +314,49 @@ export const useIdeaStore = create<IdeaStore>((set, get) => ({
 
 // Helper to get the shared WebSocket from terminalStore
 // The idea store shares the WS connection with the terminal store
+// Cached reference to terminal store — set lazily to avoid circular import
+let _terminalStoreRef: { getState: () => { ws: WebSocket | null } } | null = null;
+
 function getWebSocket(): WebSocket | null {
-  try {
-    // Import dynamically to avoid circular dependency
-    const { useTerminalStore } = require('./terminalStore');
-    return useTerminalStore.getState().ws;
-  } catch {
+  if (!_terminalStoreRef) {
     return null;
   }
+  return _terminalStoreRef.getState().ws;
+}
+
+// Called once from MissionControl to provide the terminal store reference
+export function setTerminalStoreRef(store: { getState: () => { ws: WebSocket | null } }): void {
+  _terminalStoreRef = store;
 }
 
 // Register idea-specific WS message handlers on the terminal store's WS
 // This is called from the component that mounts the idea system
 export function registerIdeaWSHandlers(ws: WebSocket): void {
+  // Helper to subscribe all open ideas
+  const subscribeOpenIdeas = () => {
+    const { openIdeaIds, activeIdeaId } = useIdeaStore.getState();
+    const idsToSubscribe = new Set(openIdeaIds);
+    if (activeIdeaId) idsToSubscribe.add(activeIdeaId);
+    for (const ideaId of idsToSubscribe) {
+      ws.send(JSON.stringify({ type: 'subscribe-idea', ideaId }));
+    }
+  };
+
+  // Re-subscribe all open ideas on (re)connect
+  const originalOnOpen = ws.onopen;
+  ws.onopen = (event) => {
+    // Call original onopen first (sets isConnected, re-subscribes terminal sessions)
+    if (originalOnOpen) {
+      (originalOnOpen as (ev: Event) => void).call(ws, event);
+    }
+    subscribeOpenIdeas();
+  };
+
+  // If WS is already open (race: connected before React rendered), subscribe now
+  if (ws.readyState === WebSocket.OPEN) {
+    subscribeOpenIdeas();
+  }
+
   // The idea messages come through the same WS connection
   // We add a message listener that handles idea-specific events
   const originalOnMessage = ws.onmessage;
@@ -401,6 +444,16 @@ export function registerIdeaWSHandlers(ws: WebSocket): void {
             if (message.queue) {
               store.updateIdea(sessionId, { messageQueue: message.queue });
             }
+            break;
+
+          case 'context_state_update':
+            if (message.contextState) {
+              store.updateIdea(sessionId, { contextState: message.contextState });
+            }
+            break;
+
+          case 'context_split_suggested':
+            store.updateIdea(sessionId, { splitSuggested: true });
             break;
 
           case 'error':

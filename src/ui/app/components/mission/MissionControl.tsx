@@ -14,7 +14,7 @@ import { IdeaView } from '../idea/IdeaView';
 import { IdeaPanel } from '../idea/IdeaPanel';
 import { AttachRepoModal } from '../idea/AttachRepoModal';
 import { PromoteModal } from '../idea/PromoteModal';
-import { useIdeaStore, registerIdeaWSHandlers } from '../../store/ideaStore';
+import { useIdeaStore, registerIdeaWSHandlers, setTerminalStoreRef } from '../../store/ideaStore';
 
 import { PhaseNavigator, Phase, ExistingPR } from './PhaseNavigator';
 import { RepoDock, RepoStatus } from './RepoDock';
@@ -229,6 +229,11 @@ export default function MissionControl() {
   useEffect(() => {
     ideaStore.loadIdeas();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Provide terminal store reference to idea store (avoids circular import)
+  useEffect(() => {
+    setTerminalStoreRef(useTerminalStore);
+  }, []);
 
   // Register idea WS handlers when WebSocket connects
   const terminalWs = useTerminalStore((s) => s.ws);
@@ -501,7 +506,7 @@ export default function MissionControl() {
               repos={[]}
               onRepoClick={() => {}}
               onRepoRemove={async () => {}}
-              ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+              ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
               activeIdeaId={ideaStore.activeIdeaId}
               onIdeaClick={(id) => ideaStore.switchIdea(id)}
               onIdeaClose={(id) => ideaStore.closeIdea(id)}
@@ -525,8 +530,16 @@ export default function MissionControl() {
               <PromoteModal
                 idea={activeIdea}
                 onPromote={async (opts) => {
-                  await ideaStore.promoteIdea(ideaStore.activeIdeaId!, opts);
+                  const ideaId = ideaStore.activeIdeaId!;
+                  const result = await ideaStore.promoteIdea(ideaId, opts);
                   setShowPromoteModal(false);
+                  // Reload repos so the newly created repo is available, then open a session for it
+                  await loadData({ forceRefresh: true });
+                  ideaStore.closeIdea(ideaId);
+                  await terminal.createSession(result.repoId, result.handoffSummary
+                    ? { handoffSummary: result.handoffSummary }
+                    : undefined
+                  );
                 }}
                 onClose={() => setShowPromoteModal(false)}
               />
@@ -802,7 +815,7 @@ export default function MissionControl() {
             onRepoRemove={async (sessionId) => {
               await closeSession(sessionId);
             }}
-            ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+            ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
             activeIdeaId={ideaStore.activeIdeaId}
             onIdeaClick={(id) => ideaStore.switchIdea(id)}
             onIdeaClose={(id) => ideaStore.closeIdea(id)}
@@ -826,8 +839,16 @@ export default function MissionControl() {
             <PromoteModal
               idea={activeIdea}
               onPromote={async (opts) => {
-                await ideaStore.promoteIdea(ideaStore.activeIdeaId!, opts);
+                const ideaId = ideaStore.activeIdeaId!;
+                const result = await ideaStore.promoteIdea(ideaId, opts);
                 setShowPromoteModal(false);
+                // Reload repos so the newly created repo is available, then open a session for it
+                await loadData({ forceRefresh: true });
+                ideaStore.closeIdea(ideaId);
+                await terminal.createSession(result.repoId, result.handoffSummary
+                  ? { handoffSummary: result.handoffSummary }
+                  : undefined
+                );
               }}
               onClose={() => setShowPromoteModal(false)}
             />
@@ -1040,7 +1061,7 @@ export default function MissionControl() {
         onRepoRemove={async (sessionId) => {
           await closeSession(sessionId);
         }}
-        ideaItems={ideaStore.ideas.filter(i => ideaStore.openIdeaIds.has(i.id) || i.status === 'saved')}
+        ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
         activeIdeaId={ideaStore.activeIdeaId}
         onIdeaClick={(id) => {
           ideaStore.switchIdea(id);

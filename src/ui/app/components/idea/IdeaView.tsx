@@ -3,6 +3,7 @@
  *
  * Pure chat interface with purple accent color, no phase navigator.
  * Lighter background (#0a0d14), purple avatar ring for Claude.
+ * Full-width layout matching PromptPhase.
  */
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,6 +21,8 @@ import { cn } from '../../lib/cn';
 import { useIdeaStore } from '../../store/ideaStore';
 import { useAppStore } from '../../store/appStore';
 import { IdeaTitleBar } from './IdeaTitleBar';
+import { ContextGauge } from '../terminal/ContextGauge';
+import { api } from '../../lib/api';
 import type { IdeaChatMessage } from '../../../../types';
 
 interface IdeaViewProps {
@@ -36,6 +39,7 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
     saveIdea,
     updateIdeaTitle,
     detachFromRepo,
+    fetchContextState,
   } = useIdeaStore();
 
   const { repos } = useAppStore();
@@ -58,6 +62,13 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
       inputRef.current.focus();
     }
   }, [activeIdeaId]);
+
+  // Fetch context state when idea changes or messages update
+  useEffect(() => {
+    if (activeIdeaId && activeIdea && activeIdea.messages.length > 0) {
+      fetchContextState(activeIdeaId);
+    }
+  }, [activeIdeaId, fetchContextState, activeIdea?.messages?.length]);
 
   // Auto-scroll
   useEffect(() => {
@@ -117,6 +128,15 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
     [activeIdeaId, detachFromRepo]
   );
 
+  const handleSummarize = useCallback(async () => {
+    if (!activeIdeaId) return;
+    try {
+      await api('POST', `/ideas/${activeIdeaId}/context/summarize`);
+    } catch (error) {
+      console.error('[IdeaView] Failed to trigger summarization:', error);
+    }
+  }, [activeIdeaId]);
+
   // Build repo name map
   const repoNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -130,6 +150,8 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
 
   const isRunning = activeIdea.chatStatus === 'running';
   const isEmpty = activeIdea.messages.length === 0;
+  const contextPct = activeIdea.contextState?.contextUtilizationPercent;
+  const showSplit = activeIdea.splitSuggested || (contextPct != null && contextPct >= 85);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#0a0d14]">
@@ -182,11 +204,18 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
               onKeyDown={handleKeyDown}
               inputRef={inputRef}
               isRunning={isRunning}
+              contextState={activeIdea.contextState}
+              onSummarize={handleSummarize}
             />
           </div>
         </div>
       ) : (
         <div className="relative z-10 flex-1 flex flex-col min-h-0">
+          {/* Context split banner */}
+          {showSplit && activeIdeaId && (
+            <IdeaContextBanner utilizationPercent={contextPct ?? 85} />
+          )}
+
           {/* Messages */}
           <div
             ref={containerRef}
@@ -195,7 +224,7 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
             role="log"
             aria-live="polite"
           >
-            <div className="w-full max-w-3xl mx-auto px-4">
+            <div className="w-full px-4">
               {activeIdea.messages.map((message, index) => {
                 const isLatest = index === activeIdea.messages.length - 1;
                 return isLatest ? (
@@ -241,11 +270,49 @@ export function IdeaView({ onOpenAttachModal, onOpenPromoteModal }: IdeaViewProp
               onKeyDown={handleKeyDown}
               inputRef={inputRef}
               isRunning={isRunning}
+              contextState={activeIdea.contextState}
+              onSummarize={handleSummarize}
             />
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// ─── IdeaContextBanner ────────────────────────────────────────────────────
+
+function IdeaContextBanner({ utilizationPercent }: { utilizationPercent: number }) {
+  const [isDismissed, setIsDismissed] = useState(false);
+
+  if (isDismissed) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        role="alert"
+        aria-live="polite"
+        className={cn(
+          'mx-6 mt-2 rounded-xl px-4 py-3 flex items-center gap-3 ring-1',
+          'bg-amber-500/10 ring-amber-500/30 text-amber-300'
+        )}
+      >
+        <p className="flex-1 text-sm">
+          Context is {utilizationPercent}% full. Consider starting a new idea to keep responses sharp.
+        </p>
+        <button
+          type="button"
+          onClick={() => setIsDismissed(true)}
+          className="p-1.5 rounded-lg transition-colors hover:bg-amber-500/20 text-amber-400 text-xs"
+          aria-label="Dismiss alert"
+        >
+          Dismiss
+        </button>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
@@ -313,6 +380,8 @@ interface IdeaComposerProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   inputRef: React.RefObject<HTMLTextAreaElement>;
   isRunning: boolean;
+  contextState?: import('../../../../types').ContextState;
+  onSummarize?: () => void;
 }
 
 function IdeaComposer({
@@ -323,6 +392,8 @@ function IdeaComposer({
   onKeyDown,
   inputRef,
   isRunning,
+  contextState,
+  onSummarize,
 }: IdeaComposerProps) {
   // Auto-resize textarea
   useEffect(() => {
@@ -333,7 +404,7 @@ function IdeaComposer({
   }, [value, inputRef]);
 
   return (
-    <div className="max-w-3xl mx-auto w-full">
+    <div className="w-full">
       <div className="relative flex items-end gap-2 rounded-2xl bg-white/[0.04] ring-1 ring-purple-500/15 focus-within:ring-purple-500/30 transition-all px-4 py-3">
         <textarea
           ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -375,12 +446,18 @@ function IdeaComposer({
         <span className="text-[10px] text-white/20">
           {isRunning ? 'Claude is thinking...' : 'Ctrl+Enter to send'}
         </span>
-        {isRunning && (
-          <span className="flex items-center gap-1 text-[10px] text-purple-400/50">
-            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-            Streaming
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isRunning && (
+            <span className="flex items-center gap-1 text-[10px] text-purple-400/50">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              Streaming
+            </span>
+          )}
+          <ContextGauge
+            contextState={contextState ?? null}
+            onSummarize={onSummarize}
+          />
+        </div>
       </div>
     </div>
   );

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] - 2026-02-02
+
+### Added
+- Context management for ideas — ideas now track token usage via the shared `contextManager`, with real-time context utilization gauge in the IdeaComposer and context-full warning banner above messages when utilization reaches 85%
+- REST-based context state fetch for ideas — `IdeaView` fetches context via `GET /api/ideas/:id/context` on mount and when messages change, providing immediate context data without waiting for a WS push
+- API endpoints: `GET /api/ideas/:id/context` (get context state), `POST /api/ideas/:id/context/summarize` (trigger Haiku summarization)
+- `fetchContextState` action added to `ideaStore` for on-demand context state retrieval
+- Refactored `ContextGauge` component to accept optional `contextState` and `onSummarize` props, enabling reuse across both session and idea views
+- `promoted` status added to `IdeaStatus` type — ideas that graduate to projects are marked as promoted and excluded from the dock and idea panel
+
+### Changed
+- PromoteModal "Repository Location" field replaced from free-text directory input with a workspace dropdown selector — lists workspaces from `appStore.workspaces` by name and scan path, auto-selects first workspace, prevents "not under an allowed base path" validation errors
+- Removed non-functional Browse button (FolderOpen icon) from PromoteModal
+
+### Fixed
+- Fix idea promotion not navigating to new session — after `promoteIdea()` succeeded, the `onPromote` callback only closed the modal without creating a session or switching views. Now reloads app data, closes the idea tab, and creates a terminal session for the promoted repo.
+- Fix promoted idea tab persisting in dock — `clearActiveIdea()` only nulled the active pointer without removing the idea from `openIdeaIds`. Replaced with `closeIdea()`. Additionally, the dock filter `i.status === 'saved'` always showed promoted ideas; now excludes `status === 'promoted'` ideas from the dock.
+- Fix idea chat history not transferring to promoted session — the backend built a `handoffSummary` from idea messages but never returned it. Now `promoteIdea()` returns `handoffSummary` in the API response, the frontend passes it through `createSession()`, and the terminal route sets it on the session object. The existing `buildPromptWithContext` handoff injection (for sessions with ≤2 messages) provides the context to Claude automatically.
+- Fix idea chat using fixed `max-w-3xl` width instead of full-width layout — IdeaView messages area and composer now use `w-full` matching PromptPhase
+- Fix idea messaging not working — `require()` call in ideaStore's `getWebSocket()` fails silently in Vite's ES module bundler, causing all WebSocket operations (send message, subscribe, cancel, set mode) to be no-ops. Replaced with explicit store reference pattern via `setTerminalStoreRef()`.
+- Fix idea real-time updates not reflecting in UI — two root causes: (1) `registerIdeaWSHandlers` did not re-subscribe ideas on WebSocket reconnect, so `broadcastToSession` found zero subscribers and silently dropped messages; now wraps `ws.onopen` to re-subscribe all `openIdeaIds` on every (re)connect. (2) `useTerminal` connect effect had `isConnected` in its dependency array, causing a connect/disconnect oscillation loop that destroyed subscriptions; removed `isConnected` from deps since reconnection is already handled by `terminalStore`'s `onclose` retry.
+
 ## [3.7.0] - 2026-02-01
 
 ### Added

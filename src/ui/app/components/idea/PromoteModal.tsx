@@ -13,11 +13,12 @@ import {
   Rocket,
   ChevronRight,
   ChevronLeft,
-  FolderOpen,
+  ChevronDown,
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useAppStore } from '../../store/appStore';
 import type { Idea, PromoteOptions } from '../../../../types';
 
 interface PromoteModalProps {
@@ -35,16 +36,22 @@ function slugify(text: string): string {
 }
 
 export function PromoteModal({ idea, onPromote, onClose }: PromoteModalProps) {
+  const workspaces = useAppStore((s) => s.workspaces);
   const [step, setStep] = useState(1);
   const [repoName, setRepoName] = useState(
     idea.title ? slugify(idea.title) : 'my-project'
   );
-  const [directory, setDirectory] = useState('');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(
+    workspaces[0]?.id ?? ''
+  );
+  const directory = workspaces.find((w) => w.id === selectedWorkspaceId)?.scanPath ?? '';
   const [generateScaffold, setGenerateScaffold] = useState(false);
   const [transferHistory, setTransferHistory] = useState(true);
   const [isPromoting, setIsPromoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     nameInputRef.current?.focus();
@@ -57,6 +64,18 @@ export function PromoteModal({ idea, onPromote, onClose }: PromoteModalProps) {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isDropdownOpen]);
 
   const handlePromote = useCallback(async () => {
     if (!repoName.trim() || !directory.trim()) return;
@@ -164,27 +183,59 @@ export function PromoteModal({ idea, onPromote, onClose }: PromoteModalProps) {
                   />
                 </div>
 
-                {/* Directory */}
+                {/* Workspace selector */}
                 <div>
                   <label className="block text-sm font-medium text-white/70 mb-1.5">
                     Repository Location
                   </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={directory}
-                      onChange={(e) => setDirectory(e.target.value)}
-                      placeholder="/path/to/workspace"
-                      className="flex-1 rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08] px-4 py-2.5 text-sm text-white/90 placeholder-white/30 outline-none focus:ring-purple-500/30 transition-all"
-                    />
+                  <div className="relative" ref={dropdownRef}>
                     <button
-                      className="flex items-center justify-center h-10 w-10 rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
-                      title="Browse"
+                      type="button"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-xl bg-white/[0.04] ring-1 ring-white/[0.08] px-4 py-2.5 text-left outline-none focus:ring-purple-500/30 transition-all"
                     >
-                      <FolderOpen className="h-4 w-4" />
+                      {selectedWorkspaceId && workspaces.find((w) => w.id === selectedWorkspaceId) ? (
+                        <div className="min-w-0">
+                          <div className="text-sm text-white/90 truncate">
+                            {workspaces.find((w) => w.id === selectedWorkspaceId)!.name}
+                          </div>
+                          <div className="text-[11px] text-white/40 truncate">
+                            {workspaces.find((w) => w.id === selectedWorkspaceId)!.scanPath}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-white/30">No workspaces available</span>
+                      )}
+                      <ChevronDown className={cn(
+                        'h-4 w-4 text-white/40 flex-shrink-0 ml-2 transition-transform',
+                        isDropdownOpen && 'rotate-180'
+                      )} />
                     </button>
+
+                    {isDropdownOpen && workspaces.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded-xl bg-[#161b22] ring-1 ring-white/10 shadow-xl overflow-hidden">
+                        {workspaces.map((ws) => (
+                          <button
+                            key={ws.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedWorkspaceId(ws.id);
+                              setIsDropdownOpen(false);
+                            }}
+                            className={cn(
+                              'w-full px-4 py-2.5 text-left hover:bg-white/[0.06] transition-colors',
+                              ws.id === selectedWorkspaceId && 'bg-purple-500/10'
+                            )}
+                          >
+                            <div className="text-sm text-white/90 truncate">{ws.name}</div>
+                            <div className="text-[11px] text-white/40 truncate">{ws.scanPath}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <p className="mt-1 text-[11px] text-white/30">
-                    Project will be created at: {directory ? `${directory}/${repoName}` : '<select a location>'}
+                    Project will be created at: {directory ? `${directory}/${repoName}` : '<select a workspace>'}
                   </p>
                 </div>
 

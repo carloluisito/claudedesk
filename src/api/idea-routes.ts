@@ -112,6 +112,34 @@ ideaRouter.post('/:id/promote', async (req: Request, res: Response) => {
   }
 });
 
+// GET /ideas/:id/context — Get context state for an idea
+ideaRouter.get('/:id/context', (req: Request, res: Response) => {
+  try {
+    const state = ideaManager.getContextState(req.params.id);
+    if (!state) {
+      return res.status(404).json({ success: false, error: 'Idea not found' });
+    }
+    res.json({ success: true, data: state });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+// POST /ideas/:id/context/summarize — Trigger summarization for an idea
+ideaRouter.post('/:id/context/summarize', async (req: Request, res: Response) => {
+  try {
+    await ideaManager.summarizeIdea(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('not found')) {
+      return res.status(404).json({ success: false, error: msg });
+    }
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
 // POST /ideas/:id/attach — Link to existing repo
 ideaRouter.post('/:id/attach', (req: Request, res: Response) => {
   try {

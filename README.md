@@ -72,7 +72,8 @@ ClaudeDesk includes a brainstorming mode for exploring concepts without a reposi
 - **Ephemeral Ideas** — Live in memory only, lost on restart. Zero ceremony to create.
 - **Saved Ideas** — Persisted to `config/ideas.json` for later reference.
 - **Repo Attachment** — Link ideas to existing repos for read-only codebase context (no modifications).
-- **Promotion** — Graduate ideas to full projects with git init, optional scaffold, and session creation.
+- **Promotion** — Graduate ideas to full projects with git init, optional scaffold, and session creation. Chat history is handed off to the new session so Claude retains context from the brainstorming phase. Promoted ideas are automatically removed from the dock.
+- **Context Tracking** — Real-time token usage gauge in the composer, context-full warning banner at 85% utilization, and Haiku-powered summarization — same context management as terminal sessions.
 
 ### Workflow
 
@@ -80,7 +81,7 @@ ClaudeDesk includes a brainstorming mode for exploring concepts without a reposi
 2. **Brainstorm** — Chat with Claude in a purple-themed, repo-free environment
 3. **Save** (optional) — Pin ephemeral ideas to persist across restarts
 4. **Attach** (optional) — Link existing repos so Claude can browse code for context
-5. **Promote** — Graduate to a full project with a two-step modal (name, directory, scaffold options)
+5. **Promote** — Graduate to a full project with a two-step modal: choose a name, select a workspace from the dropdown, and configure scaffold options. Chat history transfers to the new session automatically.
 
 ### Idea Keyboard Shortcuts
 
@@ -105,6 +106,8 @@ ClaudeDesk includes a brainstorming mode for exploring concepts without a reposi
 | `POST` | `/api/ideas/:id/promote` | Graduate to project |
 | `POST` | `/api/ideas/:id/attach` | Link to existing repo |
 | `POST` | `/api/ideas/:id/detach` | Unlink from repo |
+| `GET` | `/api/ideas/:id/context` | Get context utilization state |
+| `POST` | `/api/ideas/:id/context/summarize` | Trigger Haiku summarization |
 
 ### WebSocket Events
 

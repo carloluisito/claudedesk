@@ -3,9 +3,14 @@ import { Brain, Loader2, Check } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { api } from '../../lib/api';
 import { useTerminalStore } from '../../store/terminalStore';
+import type { ContextState } from '../../../../types';
 
 interface ContextGaugeProps {
   className?: string;
+  /** When provided, uses this context state instead of reading from terminalStore */
+  contextState?: ContextState | null;
+  /** Custom summarize handler (for ideas). Falls back to terminal session API. */
+  onSummarize?: () => void;
 }
 
 function getGaugeColor(percent: number): string {
@@ -22,7 +27,7 @@ function getTextColor(percent: number): string {
   return 'text-emerald-400';
 }
 
-export const ContextGauge = memo(function ContextGauge({ className }: ContextGaugeProps) {
+export const ContextGauge = memo(function ContextGauge({ className, contextState: externalContextState, onSummarize }: ContextGaugeProps) {
   const { sessions, activeSessionId, fetchContextState } = useTerminalStore();
 
   const session = useMemo(
@@ -30,26 +35,32 @@ export const ContextGauge = memo(function ContextGauge({ className }: ContextGau
     [sessions, activeSessionId]
   );
 
-  // Fetch context state on mount and when session changes
+  // Fetch context state on mount and when session changes (only when using terminal store)
   useEffect(() => {
+    if (externalContextState !== undefined) return; // External state provided, skip
     if (activeSessionId && session && (session.messages?.length || 0) > 0) {
       fetchContextState(activeSessionId);
     }
-  }, [activeSessionId, fetchContextState, session?.messages?.length]);
+  }, [activeSessionId, fetchContextState, session?.messages?.length, externalContextState]);
 
-  const contextState = session?.contextState;
+  // Use external state if provided, otherwise fall back to terminal session state
+  const contextState = externalContextState !== undefined ? externalContextState : session?.contextState;
 
   const handleSummarize = useCallback(async () => {
+    if (onSummarize) {
+      onSummarize();
+      return;
+    }
     if (!activeSessionId) return;
     try {
       await api('POST', `/terminal/sessions/${activeSessionId}/context/summarize`);
     } catch (error) {
       console.error('[ContextGauge] Failed to trigger summarization:', error);
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, onSummarize]);
 
-  // Don't render if no session or no messages yet
-  if (!session || !contextState) {
+  // Don't render if no context state
+  if (!contextState) {
     return null;
   }
 
