@@ -530,7 +530,20 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
     const queryString = params.toString();
     const url = `/terminal/sessions/${sessionId}${queryString ? `?${queryString}` : ''}`;
-    await api('DELETE', url);
+
+    // Add timeout to prevent hanging indefinitely
+    const timeout = 10000; // 10 seconds
+    try {
+      await Promise.race([
+        api('DELETE', url),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Session close timeout')), timeout)
+        )
+      ]);
+    } catch (error) {
+      console.error('[Terminal] Session close error:', error);
+      // Continue with cleanup even if API call fails/times out
+    }
 
     set((state) => {
       const newSessions = state.sessions.filter((s) => s.id !== sessionId);

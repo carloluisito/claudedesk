@@ -2335,9 +2335,13 @@ class TerminalSessionManager {
       return { deleted: false };
     }
 
-    // Cancel any running process
+    // Cancel any running process (non-blocking with callback)
     if (session.claudeProcess?.pid) {
-      treeKill(session.claudeProcess.pid);
+      treeKill(session.claudeProcess.pid, 'SIGTERM', (err) => {
+        if (err) {
+          console.warn(`[TerminalSession] Failed to kill process tree for session ${sessionId}:`, err);
+        }
+      });
     }
 
     // Clean up session attachments

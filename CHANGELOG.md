@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.4] - 2026-02-03
+
+### Fixed
+- **Usage indicators not showing in Idea view** (`WalletGauge.tsx`) — Fixed bug where budget/usage indicators (5h and 7d quotas) wouldn't display in Idea view until after visiting a session. The component was checking for an active session before rendering, but usage quotas are account-wide and should always be visible. Removed the session existence check to ensure indicators display consistently in all views.
+- **Session close hanging indefinitely** — Fixed multiple issues causing "Closing..." state to hang when closing sessions:
+  - Added 10-second timeout to frontend `closeSession` API call (`terminalStore.ts`) to prevent indefinite waiting if backend hangs
+  - Fixed `treeKill` process termination to use callback instead of blocking (`terminal-session.ts`)
+  - Added 15-second timeout to worktree dialog Promise to force-close sessions if dialog becomes unresponsive
+  - Fixed error handling to ensure cleanup code always runs even if close operation fails
+- **Worktree close dialog not appearing** (`MissionControl.tsx`) — Moved `CloseWorktreeDialog` from Idea view section to root level (alongside `BudgetLimitModal`) so it renders from any view. Previously, the dialog was only rendered in the Idea view section, causing it to not appear when closing sessions from other contexts.
+- **Closed ideas remaining in tabs** — Fixed bug where closing a saved idea would clear the active idea but leave it in the dock tabs. Updated RepoDock filters to only show ideas in `openIdeaIds` set, not all saved ideas. Now when you close an idea, it's properly removed from the tabs.
+
 ## [3.8.3] - 2026-02-03
 
 ### Added

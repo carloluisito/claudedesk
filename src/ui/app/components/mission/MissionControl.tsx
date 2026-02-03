@@ -183,17 +183,42 @@ export default function MissionControl() {
 
   // Handle closing a session (with worktree check)
   const handleCloseSession = useCallback(async (sessionId: string) => {
-    const session = sessions.find(s => s.id === sessionId);
-
-    // If this is a worktree session that owns its worktree, show dialog
-    if (session?.worktreeMode && session.ownsWorktree) {
-      // Create a promise that will resolve when the dialog is closed
-      return new Promise<void>((resolve) => {
-        setCloseWorktreeDialog({ isOpen: true, sessionId, resolve });
+    try {
+      const session = sessions.find(s => s.id === sessionId);
+      console.log('[MissionControl] Closing session:', {
+        sessionId,
+        found: !!session,
+        worktreeMode: session?.worktreeMode,
+        ownsWorktree: session?.ownsWorktree,
+        name: session?.name,
       });
-    } else {
-      // Non-worktree session or borrowed worktree - close immediately
-      await closeSession(sessionId);
+
+      // If this is a worktree session that owns its worktree, show dialog
+      if (session?.worktreeMode && session.ownsWorktree) {
+        console.log('[MissionControl] Showing worktree dialog for session:', sessionId);
+        // Create a promise that will resolve when the dialog is closed
+        // Add timeout to prevent hanging forever
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            setCloseWorktreeDialog({ isOpen: true, sessionId, resolve });
+          }),
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              console.warn('[MissionControl] Worktree dialog timed out, closing without dialog');
+              // Close dialog if it's still open
+              setCloseWorktreeDialog({ isOpen: false, sessionId: null });
+              // Force close the session without worktree cleanup
+              closeSession(sessionId, false, false).then(() => resolve()).catch(() => resolve());
+            }, 15000)
+          )
+        ]);
+      } else {
+        // Non-worktree session or borrowed worktree - close immediately
+        await closeSession(sessionId);
+      }
+    } catch (error) {
+      console.error('[MissionControl] Error closing session:', error);
+      // Don't re-throw - let RepoDock's finally block execute
     }
   }, [sessions, closeSession]);
 
@@ -700,7 +725,7 @@ export default function MissionControl() {
               repos={[]}
               onRepoClick={() => {}}
               onRepoRemove={handleCloseSession}
-              ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
+              ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && ideaStore.openIdeaIds.has(i.id))}
               activeIdeaId={ideaStore.activeIdeaId}
               onIdeaClick={(id) => ideaStore.switchIdea(id)}
               onIdeaClose={(id) => ideaStore.closeIdea(id)}
@@ -1009,7 +1034,7 @@ export default function MissionControl() {
               switchSession(sessionId);
             }}
             onRepoRemove={handleCloseSession}
-            ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
+            ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && ideaStore.openIdeaIds.has(i.id))}
             activeIdeaId={ideaStore.activeIdeaId}
             onIdeaClick={(id) => ideaStore.switchIdea(id)}
             onIdeaClose={(id) => ideaStore.closeIdea(id)}
@@ -1047,43 +1072,6 @@ export default function MissionControl() {
               onClose={() => setShowPromoteModal(false)}
             />
           )}
-
-          {/* Close Worktree Dialog */}
-          {closeWorktreeDialog.isOpen && closeWorktreeDialog.sessionId && (() => {
-            const session = sessions.find(s => s.id === closeWorktreeDialog.sessionId);
-            if (!session) return null;
-
-            return (
-              <CloseWorktreeDialog
-                isOpen={true}
-                onClose={() => {
-                  const { resolve } = closeWorktreeDialog;
-                  setCloseWorktreeDialog({ isOpen: false, sessionId: null });
-                  if (resolve) resolve(); // Resolve without closing session (user cancelled)
-                }}
-                session={{
-                  id: session.id,
-                  name: session.name,
-                  branch: session.branch || 'unknown',
-                  worktreePath: session.worktreePath || '',
-                  baseBranch: session.baseBranch,
-                  ownsWorktree: session.ownsWorktree,
-                  status: session.status,
-                }}
-                gitStatus={session.gitStatus ? {
-                  modified: session.gitStatus.files?.filter((f: any) => f.status === 'modified').length || 0,
-                  staged: session.gitStatus.files?.filter((f: any) => f.status === 'staged').length || 0,
-                  untracked: session.gitStatus.files?.filter((f: any) => f.status === 'untracked' || f.status === 'created').length || 0,
-                } : undefined}
-                prInfo={existingPR && session.id === activeSessionId ? {
-                  number: existingPR.number,
-                  url: existingPR.url,
-                } : undefined}
-                unpushedCommits={commitsAheadOfBase && session.id === activeSessionId ? commitsAheadOfBase : undefined}
-                onConfirm={handleWorktreeDialogConfirm}
-              />
-            );
-          })()}
 
           {/* Overlay Manager for new session modal */}
           <OverlayManager
@@ -1273,6 +1261,52 @@ export default function MissionControl() {
         />
       )}
 
+      {/* Close Worktree Dialog */}
+      {closeWorktreeDialog.isOpen && closeWorktreeDialog.sessionId && (() => {
+        console.log('[MissionControl] Rendering worktree dialog, state:', {
+          isOpen: closeWorktreeDialog.isOpen,
+          sessionId: closeWorktreeDialog.sessionId,
+          sessionsCount: sessions.length,
+        });
+        const session = sessions.find(s => s.id === closeWorktreeDialog.sessionId);
+        console.log('[MissionControl] Dialog session lookup:', { found: !!session, sessionId: closeWorktreeDialog.sessionId });
+        if (!session) {
+          console.warn('[MissionControl] Session not found for dialog, returning null');
+          return null;
+        }
+
+        return (
+          <CloseWorktreeDialog
+            isOpen={true}
+            onClose={() => {
+              const { resolve } = closeWorktreeDialog;
+              setCloseWorktreeDialog({ isOpen: false, sessionId: null });
+              if (resolve) resolve(); // Resolve without closing session (user cancelled)
+            }}
+            session={{
+              id: session.id,
+              name: session.name,
+              branch: session.branch || 'unknown',
+              worktreePath: session.worktreePath || '',
+              baseBranch: session.baseBranch,
+              ownsWorktree: session.ownsWorktree,
+              status: session.status,
+            }}
+            gitStatus={session.gitStatus ? {
+              modified: session.gitStatus.files?.filter((f: any) => f.status === 'modified').length || 0,
+              staged: session.gitStatus.files?.filter((f: any) => f.status === 'staged').length || 0,
+              untracked: session.gitStatus.files?.filter((f: any) => f.status === 'untracked' || f.status === 'created').length || 0,
+            } : undefined}
+            prInfo={existingPR && session.id === activeSessionId ? {
+              number: existingPR.number,
+              url: existingPR.url,
+            } : undefined}
+            unpushedCommits={commitsAheadOfBase && session.id === activeSessionId ? commitsAheadOfBase : undefined}
+            onConfirm={handleWorktreeDialogConfirm}
+          />
+        );
+      })()}
+
       {/* Main content area */}
       <main className="relative z-10 flex-1 flex flex-col min-h-0 overflow-hidden">
         <AnimatePresence mode="wait">
@@ -1358,7 +1392,7 @@ export default function MissionControl() {
           switchSession(sessionId);
         }}
         onRepoRemove={handleCloseSession}
-        ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && (ideaStore.openIdeaIds.has(i.id) || i.status === 'saved'))}
+        ideaItems={ideaStore.ideas.filter(i => i.status !== 'promoted' && ideaStore.openIdeaIds.has(i.id))}
         activeIdeaId={ideaStore.activeIdeaId}
         onIdeaClick={(id) => {
           ideaStore.switchIdea(id);

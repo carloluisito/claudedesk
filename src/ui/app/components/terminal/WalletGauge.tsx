@@ -92,14 +92,12 @@ function SegmentedBar({ pct, segments = 5 }: { pct: number; segments?: number })
 }
 
 export const WalletGauge = memo(function WalletGauge({ className }: WalletGaugeProps) {
-  const { sessions, activeSessionId } = useTerminalStore();
+  const { activeSessionId } = useTerminalStore();
   const { openOverlay } = useTerminalUIStore();
   const [quota, setQuota] = useState<ClaudeUsageQuota | null>(null);
   const [burnRate, setBurnRate] = useState<BurnRateData | null>(null);
   const [config, setConfig] = useState<AllocatorConfig | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const session = sessions.find((s) => s.id === activeSessionId);
 
   const hasFetched = useRef(false);
 
@@ -151,8 +149,6 @@ export const WalletGauge = memo(function WalletGauge({ className }: WalletGaugeP
     }, 120000);
     return () => clearInterval(interval);
   }, [fetchData]);
-
-  if (!session) return null;
 
   const fiveHourPct = quota ? Math.round(quota.five_hour.utilization * 100) : 0;
   const sevenDayPct = quota ? Math.round(quota.seven_day.utilization * 100) : 0;
