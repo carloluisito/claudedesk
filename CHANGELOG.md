@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.5] - 2026-02-04
+
+### Added
+
+#### UI Component Library Expansion
+- **IdeaComposer** (`IdeaComposer.tsx`) — Refined, standalone input interface component extracted from IdeaView with:
+  - Gradient background with layered depth (from-white/[0.05] via-white/[0.03] to-white/[0.02])
+  - Enhanced focus states with dynamic purple ring colors based on content state
+  - Larger action buttons (40x40px on mobile, 36x36px on desktop) with better touch targets
+  - Streaming indicator with animated dot
+  - Auto-resizing textarea (24px min, 200px max height)
+  - Context gauge integration for real-time token usage display
+  - Full ARIA labels and keyboard accessibility
+- **IdeaContextBanner** (`IdeaContextBanner.tsx`) — Context utilization warning banner with:
+  - AlertTriangle icon in rounded badge with amber glow effect
+  - Gradient background (from-amber-500/15 via-amber-500/10 to-amber-500/5)
+  - Animated entry/exit transitions (framer-motion)
+  - Dismissable with close button
+  - Enhanced spacing and responsive layout
+  - Accessibility features (role="alert", aria-live="polite", ARIA labels)
+- **IdeaMessage** (`IdeaMessage.tsx`) — Reusable message display component for idea chat with:
+  - Differentiated user/assistant avatars (purple ring for Claude, white ring for user)
+  - Rounded bubble design with gradient backgrounds
+  - Markdown rendering with remarkBreaks and remarkGfm
+  - Streaming state support with animated cursor
+  - Responsive max-width (85%) for natural conversation flow
+- **ScrollToBottomFAB** (`ScrollToBottomFAB.tsx`) — Floating action button for scroll-to-bottom functionality with:
+  - Animated appearance/disappearance (scale + opacity transitions)
+  - Purple gradient background with backdrop blur
+  - Hover effects with enhanced glow
+- **ActionCard** (`ActionCard.tsx`) — Reusable action card component with:
+  - Dual theme support (purple/blue) with gradient backgrounds and ring colors
+  - Icon badge with glow effect that intensifies on hover
+  - Title, description, and keyboard shortcut display
+  - Framer-motion animations (whileHover, whileTap)
+  - 3D lift effect on hover (-4px translateY)
+  - Full accessibility support with ARIA labels and focus-visible rings
+- **FeatureHighlight** (`FeatureHighlight.tsx`) — Small feature badge/chip component with:
+  - Optional icon support (lucide-react)
+  - Subtle glass-morphism styling (bg-white/[0.03], ring-1 ring-white/[0.08])
+  - Inline-flex layout with 1.5 gap
+- **PhaseIndicatorStrip** (`PhaseIndicatorStrip.tsx`) — Workflow phase indicator component with:
+  - Three phases: Prompt (blue), Review (emerald), Ship (purple)
+  - Dot indicators with color-coded states (active/past/future)
+  - ChevronRight separators between phases
+  - Rounded-full container with glass background
+  - Semantic role="navigation" with aria-label
+- **RepositoryContextHeader** (`RepositoryContextHeader.tsx`) — Repository context header component
+- **SuggestedPromptCard** (`SuggestedPromptCard.tsx`) — Suggested prompt card component for quick prompt selection
+
+#### Mission Control Welcome Screen Enhancement
+- **Dual action card layout** replacing simple button CTAs:
+  - "New Idea" card (purple theme) for brainstorming without repo
+  - "New Session" card (blue theme) for repository-based work
+  - Each card displays keyboard shortcut (Ctrl+Shift+I, Ctrl+Shift+T)
+  - Staggered entrance animations (0.4s, 0.5s delays)
+- **Feature highlights strip** showcasing key capabilities:
+  - Multi-file editing (FileCode icon)
+  - Git workflows (GitBranch icon)
+  - AI pair programming (Sparkles icon)
+  - Architecture planning (Code2 icon)
+  - Real-time suggestions (Zap icon)
+  - Horizontally scrollable chip layout with icons
+- **Enhanced visual design**:
+  - Dual gradient orbs (blue at top-left, purple at top-right) with 3xl blur
+  - Animated gradient opacity transitions (0.8s duration)
+  - Improved spacing and glass card design (rounded-3xl, p-10 sm:p-12)
+  - Enhanced hero copy: "Brainstorm ideas without code, or dive into repository-level work. Claude adapts to your workflow."
+- **Recent ideas section improvements**:
+  - Time ago display showing relative timestamps (Just now, Xm ago, Xh ago, Xd ago, date)
+  - `getTimeAgo()` utility function for human-readable timestamps
+  - Enhanced hover states and glass-morphism styling
+- **Suggested prompt handler** (`handleSuggestedPromptClick`) for filling composer from suggested prompts with auto-focus after 100ms delay
+
+### Changed
+- **IdeaView component refactoring** — Migrated from inline component definitions to extracted standalone modules:
+  - Removed ~200 lines of inline component code (IdeaContextBanner, IdeaMessage, IdeaComposer)
+  - Replaced with clean imports from dedicated component files
+  - Improved maintainability and reusability across the codebase
+  - Enhanced editorial typography and creative atelier aesthetic
+  - ScrollToBottomFAB now rendered as standalone component with wrapper div
+- **MissionControl welcome screen** — Completely redesigned empty state from simple CTAs to rich, branded experience:
+  - Replaced inline button pair with ActionCard grid (1 column mobile, 2 columns desktop)
+  - Added FeatureHighlight components showcasing platform capabilities
+  - Enhanced background with dual animated gradient orbs
+  - Better responsive layout with max-w-2xl constraint and improved spacing
+  - Staggered animations for progressive disclosure (0.2s hero, 0.4s/0.5s cards, 0.6s recent ideas)
+- **Code organization** — Improved component structure and separation of concerns:
+  - Better imports organization with grouped Lucide icons
+  - Cleaner component tree with extracted utility functions
+  - Enhanced TypeScript type safety with explicit interfaces
+
 ## [3.8.4] - 2026-02-03
 
 ### Fixed

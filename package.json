@@ -1,6 +1,6 @@
 {
   "name": "claudedesk",
-  "version": "3.8.4",
+  "version": "3.8.5",
   "description": "AI-powered development platform with CLI and web interface for Claude Code",
   "type": "module",
   "main": "dist/index.js",
@@ -72,6 +72,7 @@
     "@types/glob": "^8.1.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "express": "^4.21.0",
     "framer-motion": "^11.5.0",
     "get-port": "^7.1.0",

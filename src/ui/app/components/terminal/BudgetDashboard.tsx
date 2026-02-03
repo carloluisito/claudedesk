@@ -191,10 +191,11 @@ function Recommendations({ quota, burnRate }: { quota?: ClaudeUsageQuota | null;
   );
 }
 
-export function BudgetDashboard({ isOpen, onClose, quota, burnRate, onRefresh }: BudgetDashboardProps) {
+export function BudgetDashboard({ isOpen, onClose, quota, burnRate: burnRateProp, onRefresh }: BudgetDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<UtilizationSample[]>([]);
   const [config, setConfig] = useState<AllocatorConfig | null>(null);
+  const [burnRate, setBurnRate] = useState<BurnRateData | null>(burnRateProp || null);
   const onRefreshRef = useRef(onRefresh);
   onRefreshRef.current = onRefresh;
 
@@ -202,12 +203,14 @@ export function BudgetDashboard({ isOpen, onClose, quota, burnRate, onRefresh }:
     setLoading(true);
     try {
       onRefreshRef.current?.();
-      const [historyResult, configResult] = await Promise.all([
+      const [historyResult, configResult, burnRateResult] = await Promise.all([
         api<UtilizationSample[]>('GET', '/terminal/usage/history').catch(() => []),
         api<AllocatorConfig>('GET', '/terminal/usage/budget-config').catch(() => null),
+        api<BurnRateData>('GET', '/terminal/usage/burn-rate').catch(() => null),
       ]);
       setHistory(historyResult || []);
       if (configResult) setConfig(configResult);
+      if (burnRateResult) setBurnRate(burnRateResult);
     } finally {
       setLoading(false);
     }

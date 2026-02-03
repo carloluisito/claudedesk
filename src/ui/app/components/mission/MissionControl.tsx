@@ -7,8 +7,10 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Lightbulb, FolderGit2 } from 'lucide-react';
+import { Settings, Lightbulb, FolderGit2, Code2, GitBranch, Sparkles, FileCode, Zap } from 'lucide-react';
 import { Logo } from './Logo';
+import { ActionCard } from './ActionCard';
+import { FeatureHighlight } from './FeatureHighlight';
 import { OnboardingFlow } from './OnboardingFlow';
 import { IdeaView } from '../idea/IdeaView';
 import { IdeaPanel } from '../idea/IdeaPanel';
@@ -52,6 +54,21 @@ interface ClaudeUsageQuota {
   five_hour: ClaudeQuotaBucket;
   seven_day: ClaudeQuotaBucket;
   lastUpdated: string;
+}
+
+// Utility function to format relative time
+function getTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
 }
 
 export default function MissionControl() {
@@ -573,6 +590,15 @@ export default function MissionControl() {
     executeSend(agentId, chainIds);
   }, [budgetCheck, acknowledgedThreshold, executeSend]);
 
+  // Handle suggested prompt click - fills composer and focuses it
+  const handleSuggestedPromptClick = useCallback((promptText: string) => {
+    setInput(promptText);
+    // Focus the composer input after a brief delay to ensure it's rendered
+    setTimeout(() => {
+      terminal.inputRef.current?.focus();
+    }, 100);
+  }, [setInput, terminal.inputRef]);
+
   // Composer component
   const composerElement = (
     <Composer
@@ -827,7 +853,18 @@ export default function MissionControl() {
         {/* Background texture — same as active state */}
         <div className="pointer-events-none fixed inset-0 z-0">
           <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-transparent to-transparent" />
-          <div className="absolute -top-32 left-1/2 h-64 w-[600px] -translate-x-1/2 rounded-full bg-blue-500/5 blur-3xl" />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="absolute -top-32 left-1/2 h-64 w-[600px] -translate-x-1/2 rounded-full bg-blue-500/5 blur-3xl"
+          />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="absolute top-1/3 -right-32 h-64 w-[500px] rounded-full bg-purple-500/5 blur-3xl"
+          />
         </div>
 
         {/* Header — matches active state structure */}
@@ -847,13 +884,14 @@ export default function MissionControl() {
 
         {/* Center content — branded empty state with dual CTAs */}
         <main className="relative z-10 flex-1 flex items-center justify-center px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center max-w-lg"
-          >
+          <div className="text-center w-full max-w-2xl">
             {/* Glass card */}
-            <div className="rounded-3xl bg-white/[0.03] ring-1 ring-white/[0.08] p-10">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+              className="rounded-3xl bg-white/[0.03] ring-1 ring-white/[0.08] p-10 sm:p-12 mb-8"
+            >
               {/* Logo as hero */}
               <div className="flex justify-center mb-6">
                 <Logo size="lg" showText={false} />
@@ -862,60 +900,84 @@ export default function MissionControl() {
               <h1 className="text-2xl font-semibold text-white mb-3">
                 Start a conversation
               </h1>
-              <p className="text-sm text-white/50 leading-relaxed mb-8 max-w-sm mx-auto">
-                No repo? No problem.
+              <p className="text-sm text-white/70 leading-relaxed mb-8 max-w-xl mx-auto">
+                Brainstorm ideas without code, or dive into repository-level work. Claude adapts to your workflow.
               </p>
 
-              {/* Dual CTAs */}
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <button
-                  onClick={() => ideaStore.createIdea()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-purple-500/15 px-6 py-3 text-sm font-semibold text-purple-200 ring-1 ring-purple-500/20 hover:bg-purple-500/25 transition-all"
+              {/* Action Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4, duration: 0.4 }}
                 >
-                  <Lightbulb className="h-4 w-4" />
-                  New Idea
-                </button>
-                <button
-                  onClick={() => ui.openNewSession()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+                  <ActionCard
+                    title="New Idea"
+                    description="Brainstorm and plan without a repo"
+                    icon={Lightbulb}
+                    onClick={() => ideaStore.createIdea()}
+                    shortcut="Ctrl+Shift+I"
+                    theme="purple"
+                  />
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 0.4 }}
                 >
-                  <FolderGit2 className="h-4 w-4" />
-                  New Session
-                </button>
+                  <ActionCard
+                    title="New Session"
+                    description="Connect a repo and start coding"
+                    icon={FolderGit2}
+                    onClick={() => ui.openNewSession()}
+                    shortcut="Ctrl+Shift+T"
+                    theme="blue"
+                  />
+                </motion.div>
               </div>
 
-              {/* Keyboard hints */}
-              <p className="text-xs text-white/25">
-                <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-mono text-[11px]">
-                  Ctrl+Shift+I
-                </kbd>
-                {' '}idea{' '}
-                <kbd className="ml-2 px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-mono text-[11px]">
-                  Ctrl+Shift+T
-                </kbd>
-                {' '}session
-              </p>
-            </div>
+              {/* Feature Highlights */}
+              <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+                <FeatureHighlight label="Multi-file editing" icon={FileCode} />
+                <FeatureHighlight label="Git workflows" icon={GitBranch} />
+                <FeatureHighlight label="AI pair programming" icon={Sparkles} />
+                <FeatureHighlight label="Architecture planning" icon={Code2} />
+                <FeatureHighlight label="Real-time suggestions" icon={Zap} />
+              </div>
+            </motion.div>
 
             {/* Recent ideas */}
             {savedIdeas.length > 0 && (
-              <div className="mt-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6, duration: 0.4 }}
+                className="mt-6"
+              >
                 <p className="text-xs text-white/30 uppercase tracking-wider mb-3">Recent Ideas</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {savedIdeas.slice(0, 3).map((idea) => (
-                    <button
-                      key={idea.id}
-                      onClick={() => ideaStore.switchIdea(idea.id)}
-                      className="inline-flex items-center gap-2 rounded-xl bg-purple-500/5 px-4 py-2.5 text-sm text-white/70 ring-1 ring-purple-500/10 hover:bg-purple-500/10 hover:text-white/90 transition-all"
-                    >
-                      <Lightbulb className="h-3.5 w-3.5 text-purple-400" />
-                      <span className="truncate max-w-[120px]">{idea.title || 'Untitled Idea'}</span>
-                    </button>
-                  ))}
+                  {savedIdeas.slice(0, 3).map((idea) => {
+                    const timeAgo = getTimeAgo(idea.updatedAt || idea.createdAt);
+                    return (
+                      <button
+                        key={idea.id}
+                        onClick={() => ideaStore.switchIdea(idea.id)}
+                        className="group inline-flex flex-col items-start gap-1 rounded-xl bg-purple-500/5 px-4 py-2.5 text-sm ring-1 ring-purple-500/10 hover:bg-purple-500/10 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/10 transition-all"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Lightbulb className="h-3.5 w-3.5 text-purple-400" />
+                          <span className="truncate max-w-[180px] text-white/70 group-hover:text-white/90">
+                            {idea.title || 'Untitled Idea'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-white/40">{timeAgo}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              </motion.div>
             )}
-          </motion.div>
+          </div>
         </main>
 
         {/* Overlay Manager for new session modal */}
@@ -1310,27 +1372,37 @@ export default function MissionControl() {
       {/* Main content area */}
       <main className="relative z-10 flex-1 flex flex-col min-h-0 overflow-hidden">
         <AnimatePresence mode="wait">
-          {activePhase === 'prompt' && (
-            <motion.div
-              key="prompt"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.2 }}
-              className="flex-1 flex flex-col min-h-0"
-            >
-              <PromptPhase
-                messages={activeSession.messages || []}
-                toolActivities={activeSession.toolActivities || []}
-                currentActivity={activeSession.currentActivity}
-                isRunning={activeSession.status === 'running'}
-                isEmpty={(activeSession.messages?.length || 0) === 0}
-                renderMessage={renderMessage}
-                messagesEndRef={messagesEndRef}
-                composer={composerElement}
-              />
-            </motion.div>
-          )}
+          {activePhase === 'prompt' && (() => {
+            // Compute repository context for empty state
+            const repoId = activeSession.repoIds?.[0] || activeSession.repoId;
+            const repoName = repoId ? repoId.split('/').pop() || repoId : undefined;
+            const branchName = activeSession.gitStatus?.branch || activeSession.branch || 'main';
+
+            return (
+              <motion.div
+                key="prompt"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.2 }}
+                className="flex-1 flex flex-col min-h-0"
+              >
+                <PromptPhase
+                  messages={activeSession.messages || []}
+                  toolActivities={activeSession.toolActivities || []}
+                  currentActivity={activeSession.currentActivity}
+                  isRunning={activeSession.status === 'running'}
+                  isEmpty={(activeSession.messages?.length || 0) === 0}
+                  renderMessage={renderMessage}
+                  messagesEndRef={messagesEndRef}
+                  composer={composerElement}
+                  repoName={repoName}
+                  branchName={branchName}
+                  onSuggestedPromptClick={handleSuggestedPromptClick}
+                />
+              </motion.div>
+            );
+          })()}
 
           {activePhase === 'review' && (
             <motion.div
