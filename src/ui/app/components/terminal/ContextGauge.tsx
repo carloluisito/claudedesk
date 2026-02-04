@@ -70,13 +70,35 @@ export const ContextGauge = memo(function ContextGauge({ className, contextState
   const isInProgress = status === 'in_progress';
   const isCompleted = status === 'completed';
 
-  const tooltipText = [
+  const tooltipLines: string[] = [
     `Context: ${pct}%`,
     `Est. tokens: ${contextState.estimatedPromptTokens.toLocaleString()}`,
+  ];
+
+  // Add token breakdown if available
+  if (contextState.tokenBreakdown) {
+    const { messagesEstimated, summariesEstimated, systemOverhead, responseBuffer } = contextState.tokenBreakdown;
+    tooltipLines.push(
+      `  Messages: ${messagesEstimated.toLocaleString()}`,
+      summariesEstimated > 0 ? `  Summaries: ${summariesEstimated.toLocaleString()}` : null,
+      `  System: ${systemOverhead.toLocaleString()}`,
+      `  Buffer: ${responseBuffer.toLocaleString()}`
+    );
+  }
+
+  tooltipLines.push(
+    `Available: ${(contextState.availablePromptTokens || contextState.modelContextWindow).toLocaleString()}`,
     `Messages: ${contextState.totalMessageCount} (${contextState.verbatimMessageCount} verbatim)`,
-    contextState.summaryCount > 0 ? `Summaries: ${contextState.summaryCount}` : null,
-    `Window: ${(contextState.modelContextWindow / 1000).toFixed(0)}K`,
-  ].filter(Boolean).join(' | ');
+    contextState.summaryCount > 0 ? `Summaries: ${contextState.summaryCount}` : null
+  );
+
+  // Add estimation accuracy if available
+  if (contextState.estimationAccuracy && contextState.confidenceLevel) {
+    const accuracy = Math.round(contextState.estimationAccuracy * 100);
+    tooltipLines.push(`Accuracy: ${accuracy}% (${contextState.confidenceLevel})`);
+  }
+
+  const tooltipText = tooltipLines.filter(Boolean).join('\n');
 
   return (
     <div

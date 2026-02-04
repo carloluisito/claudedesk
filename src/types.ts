@@ -558,6 +558,16 @@ export interface ContextState {
   summaryCount: number;
   verbatimMessageCount: number;
   totalMessageCount: number;
+  estimationAccuracy?: number;
+  systemOverheadTokens?: number;
+  availablePromptTokens?: number;
+  confidenceLevel?: 'low' | 'medium' | 'high';
+  tokenBreakdown?: {
+    messagesEstimated: number;
+    summariesEstimated: number;
+    systemOverhead: number;
+    responseBuffer: number;
+  };
 }
 
 export interface ContextSettings {
@@ -567,6 +577,9 @@ export interface ContextSettings {
   verbatimRecentCount: number;
   maxMessageLength: number;
   maxPromptTokens: number;
+  systemOverheadEstimate: number;
+  responseBufferTokens: number;
+  enableCalibration: boolean;
 }
 
 // =============================================================================

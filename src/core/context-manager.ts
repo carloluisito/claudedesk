@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { wsManager } from './ws-manager.js';
 import { claudeInvoker } from './claude-invoker.js';
 import { settingsManager } from '../config/settings.js';
+import { getTokenEstimator } from './token-estimator.js';
 import type { ContextSummary, ContextState } from '../types.js';
 
 // Model context window sizes (in tokens)
@@ -19,6 +20,7 @@ const SUMMARIZATION_TIMEOUT_MS = 60000;
 
 interface SessionContextData {
   lastActualInputTokens: number;
+  lastEstimatedTokens: number;
   summaries: ContextSummary[];
   summarizationStatus: ContextState['summarizationStatus'];
   isSummarizing: boolean;
@@ -40,6 +42,7 @@ class ContextManager {
     if (!data) {
       data = {
         lastActualInputTokens: 0,
+        lastEstimatedTokens: 0,
         summaries: [],
         summarizationStatus: 'none',
         isSummarizing: false,
@@ -51,14 +54,17 @@ class ContextManager {
   }
 
   /**
-   * Estimate tokens for a set of messages using chars/4 heuristic
+   * Estimate tokens for a set of messages using enhanced token estimator
    */
   estimateTokensForMessages(messages: ChatMessage[]): number {
-    let totalChars = 0;
-    for (const msg of messages) {
-      totalChars += msg.content.length;
-    }
-    return Math.ceil(totalChars / 4);
+    const settings = settingsManager.getContext();
+    const estimator = getTokenEstimator(settings.enableCalibration);
+
+    return estimator.estimateMultiple(
+      messages.map(msg => ({
+        content: msg.content,
+      }))
+    );
   }
 
   /**
@@ -72,6 +78,23 @@ class ContextManager {
   }
 
   /**
+   * Calculate system overhead tokens
+   * Includes: system prompt, tool schemas, response buffer
+   */
+  private calculateSystemOverhead(): number {
+    const settings = settingsManager.getContext();
+
+    // Base system prompt overhead
+    const baseOverhead = settings.systemOverheadEstimate;
+
+    // Response buffer (reserved for Claude's response)
+    const responseBuffer = settings.responseBufferTokens;
+
+    // Total overhead
+    return baseOverhead + responseBuffer;
+  }
+
+  /**
    * Build the current context state for a session
    */
   getContextState(sessionId: string, messages: ChatMessage[], model?: string): ContextState {
@@ -80,24 +103,29 @@ class ContextManager {
     const contextWindow = this.getModelContextWindow(model);
     const maxPromptTokens = settings.maxPromptTokens;
 
+    // Calculate system overhead
+    const systemOverhead = this.calculateSystemOverhead();
+    const availableTokens = maxPromptTokens - systemOverhead;
+
     // Estimate current prompt tokens
     const nonStreamingMessages = messages.filter(m => !m.isStreaming);
-    const estimatedTokens = this.estimateTokensForMessages(nonStreamingMessages);
+    const messagesEstimated = this.estimateTokensForMessages(nonStreamingMessages);
 
     // Add summary tokens
-    let summaryTokens = 0;
+    let summariesEstimated = 0;
     for (const summary of data.summaries) {
-      summaryTokens += summary.tokenEstimate;
+      summariesEstimated += summary.tokenEstimate;
     }
 
-    const totalEstimatedTokens = estimatedTokens + summaryTokens;
+    const totalEstimatedTokens = messagesEstimated + summariesEstimated;
 
     // Use actual input tokens if available and more recent, otherwise estimate
     const effectiveTokens = data.lastActualInputTokens > 0
       ? data.lastActualInputTokens
       : totalEstimatedTokens;
 
-    const utilization = Math.min(effectiveTokens / maxPromptTokens, 1.0);
+    // Calculate utilization based on available tokens (after overhead)
+    const utilization = Math.min(effectiveTokens / availableTokens, 1.0);
 
     // Count summarized vs verbatim messages
     const summarizedIds = new Set<string>();
@@ -109,6 +137,14 @@ class ContextManager {
 
     const verbatimCount = nonStreamingMessages.filter(m => !summarizedIds.has(m.id)).length;
 
+    // Store estimated tokens for calibration
+    data.lastEstimatedTokens = totalEstimatedTokens;
+
+    // Get estimation accuracy from token estimator
+    const estimator = getTokenEstimator(settings.enableCalibration);
+    const estimationAccuracy = estimator.getEstimationAccuracy();
+    const confidenceLevel = estimator.getConfidenceLevel();
+
     return {
       modelContextWindow: contextWindow,
       estimatedPromptTokens: effectiveTokens,
@@ -118,6 +154,16 @@ class ContextManager {
       summaryCount: data.summaries.length,
       verbatimMessageCount: verbatimCount,
       totalMessageCount: nonStreamingMessages.length,
+      estimationAccuracy,
+      systemOverheadTokens: systemOverhead,
+      availablePromptTokens: availableTokens,
+      confidenceLevel,
+      tokenBreakdown: {
+        messagesEstimated,
+        summariesEstimated,
+        systemOverhead,
+        responseBuffer: settings.responseBufferTokens,
+      },
     };
   }
 
@@ -126,6 +172,14 @@ class ContextManager {
    */
   updateActualUsage(sessionId: string, inputTokens: number): void {
     const data = this.getOrCreateSession(sessionId);
+
+    // Record calibration data if we have an estimated value
+    if (data.lastEstimatedTokens > 0) {
+      const settings = settingsManager.getContext();
+      const estimator = getTokenEstimator(settings.enableCalibration);
+      estimator.recordActual(data.lastEstimatedTokens, inputTokens);
+    }
+
     data.lastActualInputTokens = inputTokens;
   }
 
@@ -152,11 +206,15 @@ class ContextManager {
 
   /**
    * Check if summarization should be triggered
+   * Uses dynamic threshold based on available tokens (after overhead)
    */
   shouldSummarize(state: ContextState): boolean {
     const settings = settingsManager.getContext();
+    const availableTokens = state.availablePromptTokens || settings.maxPromptTokens;
+    const summarizationThreshold = availableTokens * settings.summarizationThreshold;
+
     return (
-      state.contextUtilizationPercent >= settings.summarizationThreshold * 100 &&
+      state.estimatedPromptTokens >= summarizationThreshold &&
       state.summarizationStatus === 'none' &&
       state.totalMessageCount > settings.verbatimRecentCount * 2
     );
@@ -164,10 +222,14 @@ class ContextManager {
 
   /**
    * Check if session split should be suggested
+   * Uses dynamic threshold based on available tokens (after overhead)
    */
   shouldSuggestSplit(state: ContextState): boolean {
     const settings = settingsManager.getContext();
-    return state.contextUtilizationPercent >= settings.splitThreshold * 100;
+    const availableTokens = state.availablePromptTokens || settings.maxPromptTokens;
+    const splitThreshold = availableTokens * settings.splitThreshold;
+
+    return state.estimatedPromptTokens >= splitThreshold;
   }
 
   /**

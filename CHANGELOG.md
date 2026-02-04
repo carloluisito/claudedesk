@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.6] - 2026-02-04
+
+### Added
+- **Enhanced Token Estimation** (`src/core/token-estimator.ts`) — Content-aware token estimation system with:
+  - Content type detection (code, prose, JSON, mixed) with different estimation ratios
+  - Calibration mechanism that learns from actual API token usage (stores up to 100 samples)
+  - Confidence levels based on calibration sample count (low/medium/high)
+  - Token estimation accuracy tracking and reporting
+  - Automatic improvement over time as more API calls are made
+- **System Overhead Accounting** — Context manager now calculates and accounts for:
+  - Base system prompt overhead (~346 tokens)
+  - Response buffer tokens (4,000 tokens reserved for Claude's response)
+  - More accurate available token calculation
+- **Dynamic Context Thresholds** — Summarization and split thresholds now calculated dynamically based on available tokens after overhead, providing more accurate trigger points
+
+### Changed
+- **Increased Context Window Usage** — `maxPromptTokens` default increased from 150,000 to 180,000 (90% of 200K window, up from 75%)
+- **Context State Interface** — Extended `ContextState` with optional fields:
+  - `estimationAccuracy` — Shows actual/estimated token ratio
+  - `systemOverheadTokens` — Total overhead (system + buffer)
+  - `availablePromptTokens` — Tokens available after overhead
+  - `confidenceLevel` — Estimation confidence ('low' | 'medium' | 'high')
+  - `tokenBreakdown` — Detailed breakdown of token usage by category
+- **Enhanced Context Gauge Tooltip** — Context gauge now shows detailed multi-line breakdown:
+  - Estimated tokens for messages and summaries separately
+  - System overhead and response buffer tokens
+  - Available tokens after overhead
+  - Estimation accuracy percentage with confidence level
+- **Context Settings** — Added new configuration options:
+  - `systemOverheadEstimate` — Base system prompt tokens (default: 346)
+  - `responseBufferTokens` — Reserved response tokens (default: 4,000)
+  - `enableCalibration` — Enable token estimation learning (default: true)
+
+### Improved
+- **Token Estimation Accuracy** — Expected improvement from ~60-70% to 90%+ accuracy within 10% of actual usage after calibration
+- **Context Utilization Display** — More accurate percentage shown in UI based on real available capacity
+- **Summarization Triggers** — More predictable timing based on actual available tokens
+- **Context Visibility** — Users can now see exactly how tokens are being used across all categories
+
+### Technical
+- Token estimator uses content-specific ratios: code (chars/3.2), prose (chars/4.2), JSON (chars/3.0), mixed (chars/3.7)
+- Calibration data stored in `config/context-calibration.json` and automatically created on first run
+- All new ContextState fields are optional for backwards compatibility
+- Settings migration handles old `maxPromptTokens` values automatically
+
 ## [3.8.5] - 2026-02-04
 
 ### Added
