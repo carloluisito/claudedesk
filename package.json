@@ -1,0 +1,46 @@
+{
+  "name": "claudedesk",
+  "version": "4.0.0",
+  "description": "A minimal Electron desktop application wrapping Claude Code CLI",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "postinstall": "node -e \"console.log('\\n⚠️  ClaudeDesk is a desktop application.\\n\\nYou\\'ve installed the SOURCE CODE. To get the INSTALLABLE APP:\\n→ https://github.com/carloluisito/claudedesk/releases\\n\\nTo build from source: npm run package\\n')\"",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:electron": "tsc -p tsconfig.main.json",
+    "electron:dev": "concurrently \"vite\" \"npm run electron:watch\"",
+    "electron:watch": "tsc -p tsconfig.main.json && electron .",
+    "start": "npm run build && npm run build:electron && electron .",
+    "package": "npm run build && npm run build:electron && electron-builder",
+    "package:win": "npm run package -- --win",
+    "package:mac": "npm run package -- --mac",
+    "package:linux": "npm run package -- --linux"
+  },
+  "dependencies": {
+    "lucide-react": "^0.563.0",
+    "node-pty": "^1.0.0",
+    "uuid": "^9.0.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-web-links": "^0.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^9.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.32",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  },
+  "author": "Carlo Luisito Adap <carlo.adap@hotmail.com>",
+  "license": "MIT"
+}

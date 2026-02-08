@@ -1,0 +1,205 @@
+import { useEffect, useRef } from 'react';
+
+export interface ContextMenuPosition {
+  x: number;
+  y: number;
+}
+
+interface ContextMenuProps {
+  position: ContextMenuPosition;
+  onClose: () => void;
+  onAction: (action: string) => void;
+  isExited: boolean;
+  isOnlyTab: boolean;
+  isRightmost: boolean;
+  canSplit?: boolean;
+}
+
+interface MenuItem {
+  id: string;
+  label: string;
+  shortcut?: string;
+  disabled?: boolean;
+  danger?: boolean;
+  hidden?: boolean;
+}
+
+export function ContextMenu({
+  position,
+  onClose,
+  onAction,
+  isExited,
+  isOnlyTab,
+  isRightmost,
+  canSplit = false,
+}: ContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  // Adjust position to stay within viewport
+  useEffect(() => {
+    if (menuRef.current) {
+      const menu = menuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let x = position.x;
+      let y = position.y;
+
+      if (x + rect.width > viewportWidth) {
+        x = viewportWidth - rect.width - 8;
+      }
+      if (y + rect.height > viewportHeight) {
+        y = viewportHeight - rect.height - 8;
+      }
+
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+  }, [position]);
+
+  const items: MenuItem[] = [
+    { id: 'rename', label: 'Rename', shortcut: 'F2' },
+    { id: 'duplicate', label: 'Duplicate', shortcut: '^D' },
+    { id: 'dividerCheckpoint', label: '' },
+    { id: 'createCheckpoint', label: 'Create Checkpoint', shortcut: '^⇧S' },
+    { id: 'viewCheckpoints', label: 'View Checkpoints', shortcut: '^⇧C' },
+    { id: 'divider1', label: '', hidden: !isExited },
+    { id: 'restart', label: 'Restart', shortcut: '^R', hidden: !isExited },
+    { id: 'dividerSplit', label: '', hidden: !canSplit },
+    { id: 'splitRight', label: 'Split Right', shortcut: '^\\', hidden: !canSplit },
+    { id: 'splitDown', label: 'Split Down', shortcut: '^⇧\\', hidden: !canSplit },
+    { id: 'divider2', label: '' },
+    { id: 'close', label: 'Close', shortcut: '^W', danger: true },
+    { id: 'closeOthers', label: 'Close Others', disabled: isOnlyTab, danger: true },
+    { id: 'closeRight', label: 'Close to Right', disabled: isRightmost, danger: true },
+  ];
+
+  const visibleItems = items.filter(item => !item.hidden);
+
+  return (
+    <div
+      ref={menuRef}
+      className="context-menu"
+      role="menu"
+      style={{ left: position.x, top: position.y }}
+    >
+      {visibleItems.map((item, _index) => {
+        if (item.id.startsWith('divider')) {
+          return <div key={item.id} className="menu-divider" />;
+        }
+
+        return (
+          <button
+            key={item.id}
+            className={`menu-item ${item.danger ? 'danger' : ''} ${item.disabled ? 'disabled' : ''}`}
+            onClick={() => !item.disabled && onAction(item.id)}
+            disabled={item.disabled}
+            role="menuitem"
+          >
+            <span className="menu-label">{item.label}</span>
+            {item.shortcut && (
+              <span className="menu-shortcut">{item.shortcut}</span>
+            )}
+          </button>
+        );
+      })}
+
+      <style>{`
+        .context-menu {
+          position: fixed;
+          min-width: 200px;
+          background: #1a1b26;
+          border: 1px solid #292e42;
+          border-radius: 10px;
+          padding: 6px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+          z-index: 100;
+          font-family: 'JetBrains Mono', monospace;
+          animation: menu-enter 0.12s ease-out;
+        }
+
+        @keyframes menu-enter {
+          from {
+            opacity: 0;
+            transform: translateY(-4px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .menu-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          padding: 10px 12px;
+          background: transparent;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.1s ease;
+          text-align: left;
+        }
+
+        .menu-item:hover:not(.disabled) {
+          background: #292e42;
+        }
+
+        .menu-item.danger:hover:not(.disabled) {
+          background: rgba(247, 118, 142, 0.1);
+        }
+
+        .menu-item.disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .menu-label {
+          font-size: 13px;
+          color: #a9b1d6;
+        }
+
+        .menu-item.danger .menu-label {
+          color: #f7768e;
+        }
+
+        .menu-shortcut {
+          font-size: 11px;
+          color: #565f89;
+        }
+
+        .menu-divider {
+          height: 1px;
+          background: #292e42;
+          margin: 6px 8px;
+        }
+      `}</style>
+    </div>
+  );
+}

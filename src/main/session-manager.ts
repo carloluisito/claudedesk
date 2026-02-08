@@ -1,0 +1,366 @@
+import { BrowserWindow } from 'electron';
+import { v4 as uuidv4 } from 'uuid';
+import { CLIManager } from './cli-manager';
+import { HistoryManager } from './history-manager';
+import {
+  SessionMetadata,
+  SessionCreateRequest,
+  SessionListResponse,
+  SessionOutput,
+  SessionExitEvent,
+  IPC_CHANNELS,
+} from '../shared/ipc-types';
+import {
+  loadSessionState,
+  saveSessionState,
+  validateDirectory,
+  getHomeDirectory,
+} from './session-persistence';
+
+const MAX_SESSIONS = 10;
+
+interface Session {
+  metadata: SessionMetadata;
+  cliManager: CLIManager | null;
+}
+
+export class SessionManager {
+  private sessions: Map<string, Session> = new Map();
+  private activeSessionId: string | null = null;
+  private mainWindow: BrowserWindow | null = null;
+  private historyManager: HistoryManager;
+
+  constructor(historyManager: HistoryManager) {
+    this.historyManager = historyManager;
+  }
+
+  setMainWindow(window: BrowserWindow): void {
+    this.mainWindow = window;
+  }
+
+  initialize(): void {
+    // Load persisted sessions
+    const state = loadSessionState();
+    if (state && state.sessions.length > 0) {
+      // Restore session metadata (but don't spawn processes yet)
+      for (const sessionMeta of state.sessions) {
+        this.sessions.set(sessionMeta.id, {
+          metadata: {
+            ...sessionMeta,
+            status: 'exited', // Mark as exited until restarted
+          },
+          cliManager: null,
+        });
+      }
+      this.activeSessionId = state.activeSessionId;
+
+      // Auto-restart the active session after a brief delay
+      if (this.activeSessionId && this.sessions.has(this.activeSessionId)) {
+        setTimeout(() => {
+          if (this.activeSessionId) {
+            this.restartSession(this.activeSessionId).catch(err => {
+              console.error('Failed to auto-restart active session:', err);
+            });
+          }
+        }, 500); // Give main window time to be ready
+      }
+    }
+  }
+
+  private send(channel: string, ...args: unknown[]): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send(channel, ...args);
+    }
+  }
+
+  private persistState(): void {
+    const sessions = Array.from(this.sessions.values()).map(s => s.metadata);
+    saveSessionState(sessions, this.activeSessionId);
+  }
+
+  private generateSessionName(request: SessionCreateRequest): string {
+    if (request.name && request.name.trim()) {
+      return request.name.trim();
+    }
+    // Use directory name or default
+    const dirName = request.workingDirectory.split(/[\\/]/).pop() || 'Session';
+    return dirName;
+  }
+
+  async createSession(request: SessionCreateRequest): Promise<SessionMetadata> {
+    if (this.sessions.size >= MAX_SESSIONS) {
+      throw new Error(`Maximum ${MAX_SESSIONS} sessions allowed`);
+    }
+
+    // Validate working directory
+    const workingDir = request.workingDirectory || getHomeDirectory();
+    if (!validateDirectory(workingDir)) {
+      throw new Error('Invalid working directory');
+    }
+
+    const id = uuidv4();
+    const metadata: SessionMetadata = {
+      id,
+      name: this.generateSessionName({ ...request, workingDirectory: workingDir }),
+      workingDirectory: workingDir,
+      permissionMode: request.permissionMode,
+      status: 'starting',
+      createdAt: Date.now(),
+    };
+
+    // Create CLI manager
+    const cliManager = new CLIManager({
+      workingDirectory: workingDir,
+      permissionMode: request.permissionMode,
+    });
+
+    // Set up output handler
+    cliManager.onOutput((data: string) => {
+      const output: SessionOutput = { sessionId: id, data };
+      this.send(IPC_CHANNELS.SESSION_OUTPUT, output);
+
+      // Record to history (async, non-blocking)
+      this.historyManager.recordOutput(id, data).catch(err => {
+        console.error('Failed to record history:', err);
+      });
+    });
+
+    // Set up exit handler
+    cliManager.onExit((exitCode: number) => {
+      const session = this.sessions.get(id);
+      if (session) {
+        session.metadata.status = 'exited';
+        session.metadata.exitCode = exitCode;
+        this.send(IPC_CHANNELS.SESSION_UPDATED, session.metadata);
+        this.send(IPC_CHANNELS.SESSION_EXITED, { sessionId: id, exitCode } as SessionExitEvent);
+        this.persistState();
+
+        // Flush final history buffer
+        this.historyManager.onSessionExit(id, exitCode).catch(err => {
+          console.error('Failed to finalize session history:', err);
+        });
+      }
+    });
+
+    // Update history metadata with session details
+    this.historyManager.updateSessionMetadata(id, metadata.name, workingDir);
+
+    // Store session
+    this.sessions.set(id, { metadata, cliManager });
+
+    // Spawn the process
+    try {
+      cliManager.spawn();
+      metadata.status = 'running';
+    } catch (err) {
+      metadata.status = 'error';
+      console.error('Failed to spawn session:', err);
+    }
+
+    // Set as active if first session
+    if (this.activeSessionId === null) {
+      this.activeSessionId = id;
+    }
+
+    this.persistState();
+    this.send(IPC_CHANNELS.SESSION_CREATED, metadata);
+
+    return metadata;
+  }
+
+  async closeSession(sessionId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    // Destroy CLI manager if running
+    if (session.cliManager) {
+      session.cliManager.destroy();
+    }
+
+    // Remove session
+    this.sessions.delete(sessionId);
+
+    // Update active session if needed
+    if (this.activeSessionId === sessionId) {
+      const remaining = Array.from(this.sessions.keys());
+      this.activeSessionId = remaining.length > 0 ? remaining[0] : null;
+      if (this.activeSessionId) {
+        this.send(IPC_CHANNELS.SESSION_SWITCHED, this.activeSessionId);
+      }
+    }
+
+    this.persistState();
+    this.send(IPC_CHANNELS.SESSION_CLOSED, sessionId);
+
+    return true;
+  }
+
+  async switchSession(sessionId: string): Promise<boolean> {
+    if (!this.sessions.has(sessionId)) {
+      return false;
+    }
+
+    this.activeSessionId = sessionId;
+    this.persistState();
+    this.send(IPC_CHANNELS.SESSION_SWITCHED, sessionId);
+
+    return true;
+  }
+
+  async renameSession(sessionId: string, newName: string): Promise<SessionMetadata> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      throw new Error('Session name cannot be empty');
+    }
+
+    if (trimmedName.length > 50) {
+      throw new Error('Session name too long (max 50 characters)');
+    }
+
+    session.metadata.name = trimmedName;
+    this.persistState();
+    this.send(IPC_CHANNELS.SESSION_UPDATED, session.metadata);
+
+    // Update history metadata
+    this.historyManager.updateSessionMetadata(
+      sessionId,
+      trimmedName,
+      session.metadata.workingDirectory
+    );
+
+    return session.metadata;
+  }
+
+  async restartSession(sessionId: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    // Destroy existing CLI manager if any
+    if (session.cliManager) {
+      session.cliManager.destroy();
+    }
+
+    // Notify history manager of restart (creates new segment)
+    await this.historyManager.onSessionRestart(sessionId).catch(err => {
+      console.error('Failed to prepare history for restart:', err);
+    });
+
+    // Update history metadata with session details
+    this.historyManager.updateSessionMetadata(
+      sessionId,
+      session.metadata.name,
+      session.metadata.workingDirectory
+    );
+
+    // Create new CLI manager with same options
+    const cliManager = new CLIManager({
+      workingDirectory: session.metadata.workingDirectory,
+      permissionMode: session.metadata.permissionMode,
+    });
+
+    // Set up handlers
+    cliManager.onOutput((data: string) => {
+      const output: SessionOutput = { sessionId, data };
+      this.send(IPC_CHANNELS.SESSION_OUTPUT, output);
+
+      // Record to history (async, non-blocking)
+      this.historyManager.recordOutput(sessionId, data).catch(err => {
+        console.error('Failed to record history:', err);
+      });
+    });
+
+    cliManager.onExit((exitCode: number) => {
+      const s = this.sessions.get(sessionId);
+      if (s) {
+        s.metadata.status = 'exited';
+        s.metadata.exitCode = exitCode;
+        this.send(IPC_CHANNELS.SESSION_UPDATED, s.metadata);
+        this.send(IPC_CHANNELS.SESSION_EXITED, { sessionId, exitCode } as SessionExitEvent);
+        this.persistState();
+
+        // Flush final history buffer
+        this.historyManager.onSessionExit(sessionId, exitCode).catch(err => {
+          console.error('Failed to finalize session history:', err);
+        });
+      }
+    });
+
+    session.cliManager = cliManager;
+    session.metadata.status = 'starting';
+    session.metadata.exitCode = undefined;
+
+    try {
+      cliManager.spawn();
+      session.metadata.status = 'running';
+    } catch (err) {
+      session.metadata.status = 'error';
+      console.error('Failed to restart session:', err);
+      return false;
+    }
+
+    this.persistState();
+    this.send(IPC_CHANNELS.SESSION_UPDATED, session.metadata);
+
+    return true;
+  }
+
+  listSessions(): SessionListResponse {
+    const sessions = Array.from(this.sessions.values())
+      .map(s => s.metadata)
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    return {
+      sessions,
+      activeSessionId: this.activeSessionId,
+    };
+  }
+
+  getActiveSessionId(): string | null {
+    return this.activeSessionId;
+  }
+
+  getSession(sessionId: string): SessionMetadata | null {
+    const session = this.sessions.get(sessionId);
+    return session ? session.metadata : null;
+  }
+
+  // Session I/O methods
+  sendInput(sessionId: string, data: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session?.cliManager) {
+      session.cliManager.write(data);
+    }
+  }
+
+  resizeSession(sessionId: string, cols: number, rows: number): void {
+    const session = this.sessions.get(sessionId);
+    if (session?.cliManager) {
+      session.cliManager.resize({ cols, rows });
+    }
+  }
+
+  // Cleanup all sessions
+  destroyAll(): void {
+    for (const session of this.sessions.values()) {
+      if (session.cliManager) {
+        session.cliManager.destroy();
+      }
+    }
+    this.sessions.clear();
+    this.activeSessionId = null;
+  }
+
+  // Get count for validation
+  getSessionCount(): number {
+    return this.sessions.size;
+  }
+}
