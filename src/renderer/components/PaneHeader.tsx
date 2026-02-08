@@ -7,8 +7,11 @@ interface PaneHeaderProps {
   workingDirectory: string;
   isFocused: boolean;
   availableSessions: TabData[];
+  canSplit: boolean;
   onChangeSession: (sessionId: string) => void;
   onClosePane: () => void;
+  onSplitHorizontal: () => void;
+  onSplitVertical: () => void;
 }
 
 export function PaneHeader({
@@ -16,8 +19,11 @@ export function PaneHeader({
   workingDirectory,
   isFocused,
   availableSessions,
+  canSplit,
   onChangeSession,
   onClosePane,
+  onSplitHorizontal,
+  onSplitVertical,
 }: PaneHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -48,6 +54,24 @@ export function PaneHeader({
         <span className="pane-working-dir">{workingDirectory}</span>
       </div>
       <div className="pane-header-right">
+        {canSplit && (
+          <>
+            <button
+              className="pane-header-btn pane-split-btn"
+              onClick={onSplitHorizontal}
+              title="Split Horizontally (Left/Right)"
+            >
+              ⬌
+            </button>
+            <button
+              className="pane-header-btn pane-split-btn"
+              onClick={onSplitVertical}
+              title="Split Vertically (Top/Bottom)"
+            >
+              ⬍
+            </button>
+          </>
+        )}
         <button
           className="pane-header-btn"
           onClick={() => setShowDropdown(!showDropdown)}
@@ -152,6 +176,15 @@ export function PaneHeader({
         .pane-header-btn:hover {
           background: #292e42;
           color: #a9b1d6;
+        }
+
+        .pane-split-btn {
+          font-size: 12px;
+        }
+
+        .pane-split-btn:hover {
+          background: #7aa2f7;
+          color: #1a1b26;
         }
 
         .pane-close-btn:hover {

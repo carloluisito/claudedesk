@@ -608,8 +608,11 @@ function App() {
                         workingDirectory={session.workingDirectory}
                         isFocused={isFocused}
                         availableSessions={availableSessions}
+                        canSplit={paneCount < 4}
                         onChangeSession={(newSessionId) => assignSession(paneId, newSessionId)}
                         onClosePane={() => closePane(paneId)}
+                        onSplitHorizontal={() => splitPane(paneId, 'horizontal')}
+                        onSplitVertical={() => splitPane(paneId, 'vertical')}
                       />
                     )}
                     <div className="pane-terminal-area">
