@@ -14,7 +14,8 @@
     "package": "npm run build && npm run build:electron && electron-builder",
     "package:win": "npm run package -- --win",
     "package:mac": "npm run package -- --mac",
-    "package:linux": "npm run package -- --linux"
+    "package:linux": "npm run package -- --linux",
+    "test": "echo \"No tests configured yet\""
   },
   "dependencies": {
     "lucide-react": "^0.563.0",

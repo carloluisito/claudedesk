@@ -35,7 +35,7 @@ jobs:
       run: npm run build
 
     - name: Run tests
-      run: npm test || echo "No tests configured yet"
+      run: npm test
 
   package:
     name: Package Electron App
