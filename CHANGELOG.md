@@ -10,9 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Screenshot capture for README documentation
 - Automated tests with Jest/Vitest
-- CI/CD pipeline for automated builds
 - Homebrew/Chocolatey packaging for easier installation
 - Development dependency security updates (electron v40+, vite v7+)
+
+---
+
+## [4.1.0] - 2026-02-08
+
+### Added
+- **Full 4-pane split view support** - Users can now split panes individually up to 4 total panes
+  - Added horizontal split button (⬌) to each pane header - splits pane left/right
+  - Added vertical split button (⬍) to each pane header - splits pane top/bottom
+  - Split buttons only appear when paneCount < 4
+  - Blue hover effect distinguishes split buttons from close button
+  - Enables complex layouts: 2x2 grids, 3-pane L-shapes, etc.
+
+### Fixed
+- **Split view limitation** - Previously, the toggle split button only supported switching between 1 and 2 panes. While the backend supported 4 panes, there was no UI to access this. Now users can create 3-4 pane layouts by splitting individual panes.
 
 ---
 
@@ -138,5 +152,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on suggesting changes and 
 
 ---
 
-[Unreleased]: https://github.com/carloluisito/claudedesk/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/carloluisito/claudedesk/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/carloluisito/claudedesk/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/carloluisito/claudedesk/releases/tag/v4.0.0

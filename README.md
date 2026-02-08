@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![Version](https://img.shields.io/badge/version-4.0.0-green.svg)
+![Version](https://img.shields.io/badge/version-4.1.0-green.svg)
 
 > A powerful desktop terminal for Claude Code CLI with multi-session management, split-view layouts, and advanced productivity features.
 
