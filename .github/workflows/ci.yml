@@ -58,7 +58,7 @@ jobs:
       run: npm ci
 
     - name: Package app
-      run: npm run package
+      run: npm run package -- --publish never
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
