@@ -28,6 +28,10 @@ import type {
   SplitViewState,
   SessionPoolSettings,
   AppVersionInfo,
+  TeamInfo,
+  TeammateDetectedEvent,
+  TasksUpdatedEvent,
+  TeamRemovedEvent,
 } from './ipc-types';
 
 import type {
@@ -168,6 +172,21 @@ export interface IPCContractMap {
   onCheckpointCreated: EventContract<'checkpoint:created', Checkpoint>;
   onCheckpointDeleted: EventContract<'checkpoint:deleted', string>;
 
+  // ── Agent Teams (invoke) ──
+  getTeams:            InvokeContract<'teams:getAll',         [],                                 TeamInfo[]>;
+  getTeamForSession:   InvokeContract<'teams:getForSession',  [string],                           TeamInfo | null>;
+  getTeamSessions:     InvokeContract<'teams:getSessions',    [string],                           SessionMetadata[]>;
+  linkSessionToTeam:   InvokeContract<'teams:linkSession',    [string, string, string],            boolean>;
+  unlinkSessionFromTeam: InvokeContract<'teams:unlinkSession', [string],                          boolean>;
+  closeTeam:           InvokeContract<'teams:close',          [string],                           boolean>;
+  updateAutoLayoutTeams: InvokeContract<'settings:updateAutoLayout', [boolean],                   boolean>;
+
+  // ── Agent Teams events (main→renderer) ──
+  onTeamDetected:      EventContract<'teams:detected',        TeamInfo>;
+  onTeammateAdded:     EventContract<'teams:teammateAdded',   TeammateDetectedEvent>;
+  onTasksUpdated:      EventContract<'teams:tasksUpdated',    TasksUpdatedEvent>;
+  onTeamRemoved:       EventContract<'teams:removed',         TeamRemovedEvent>;
+
   // ── App info (invoke) ──
   getVersionInfo:      InvokeContract<'app:getVersionInfo', [],                                  AppVersionInfo>;
 }
@@ -268,6 +287,21 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   onCheckpointCreated: 'checkpoint:created',
   onCheckpointDeleted: 'checkpoint:deleted',
 
+  // Agent Teams
+  getTeams:            'teams:getAll',
+  getTeamForSession:   'teams:getForSession',
+  getTeamSessions:     'teams:getSessions',
+  linkSessionToTeam:   'teams:linkSession',
+  unlinkSessionFromTeam: 'teams:unlinkSession',
+  closeTeam:           'teams:close',
+  updateAutoLayoutTeams: 'settings:updateAutoLayout',
+
+  // Agent Teams events
+  onTeamDetected:      'teams:detected',
+  onTeammateAdded:     'teams:teammateAdded',
+  onTasksUpdated:      'teams:tasksUpdated',
+  onTeamRemoved:       'teams:removed',
+
   // App info
   getVersionInfo:      'app:getVersionInfo',
 };
@@ -353,6 +387,19 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
 
   onCheckpointCreated: 'event',
   onCheckpointDeleted: 'event',
+
+  getTeams:            'invoke',
+  getTeamForSession:   'invoke',
+  getTeamSessions:     'invoke',
+  linkSessionToTeam:   'invoke',
+  unlinkSessionFromTeam: 'invoke',
+  closeTeam:           'invoke',
+  updateAutoLayoutTeams: 'invoke',
+
+  onTeamDetected:      'event',
+  onTeammateAdded:     'event',
+  onTasksUpdated:      'event',
+  onTeamRemoved:       'event',
 
   getVersionInfo:      'invoke',
 };

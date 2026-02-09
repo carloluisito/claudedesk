@@ -17,10 +17,13 @@ import { PaneHeader } from './components/PaneHeader';
 import { PaneSessionPicker } from './components/PaneSessionPicker';
 import { TitleBarBranding } from './components/TitleBarBranding';
 import { AboutDialog } from './components/AboutDialog';
+import { TeamPanel } from './components/TeamPanel';
 import { useSessionManager } from './hooks/useSessionManager';
 import { useQuota } from './hooks/useQuota';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useSplitView } from './hooks/useSplitView';
+import { useAgentTeams } from './hooks/useAgentTeams';
+import { useAutoTeamLayout } from './hooks/useAutoTeamLayout';
 import { Workspace, PermissionMode, WorkspaceValidationResult } from '../shared/ipc-types';
 import { PromptTemplate } from '../shared/types/prompt-templates';
 import { resolveVariables, readClipboard, getMissingVariables } from './utils/variable-resolver';
@@ -56,6 +59,21 @@ function App() {
     setRatio,
     collapseSplitView,
   } = useSplitView();
+
+  // Agent Teams
+  const { teams, closeTeam } = useAgentTeams();
+  const [showTeamPanel, setShowTeamPanel] = useState(false);
+  const [autoLayoutEnabled] = useState(true);
+
+  // Auto-layout for teams
+  useAutoTeamLayout({
+    enabled: autoLayoutEnabled,
+    sessions: sessions as any,
+    paneCount,
+    splitPane,
+    assignSession,
+    focusedPaneId,
+  });
 
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -566,6 +584,8 @@ function App() {
         isDialogOpen={showNewSessionDialog}
         onDialogOpenChange={setShowNewSessionDialog}
         workspaces={workspaces}
+        onOpenTeams={() => setShowTeamPanel(true)}
+        teamCount={teams.length}
         onOpenSettings={() => setShowSettingsDialog(true)}
         onOpenBudget={() => setShowBudgetPanel(true)}
         onOpenHistory={() => setShowHistoryPanel(true)}
@@ -681,6 +701,16 @@ function App() {
         isDangerous={true}
         onConfirm={handleConfirmClose}
         onCancel={() => setConfirmClose(null)}
+      />
+
+      {/* Team panel */}
+      <TeamPanel
+        isOpen={showTeamPanel}
+        onClose={() => setShowTeamPanel(false)}
+        teams={teams}
+        sessions={sessions as any}
+        onCloseTeam={closeTeam}
+        onFocusSession={handleFocusPaneWithSession}
       />
 
       {/* Settings dialog */}

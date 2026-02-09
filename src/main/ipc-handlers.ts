@@ -8,6 +8,7 @@ import { SettingsManager } from './settings-persistence';
 import { PromptTemplatesManager } from './prompt-templates-manager';
 import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
+import { AgentTeamManager } from './agent-team-manager';
 import { queryClaudeQuota, clearQuotaCache, getBurnRate } from './quota-service';
 import { getFileInfo, readFileContent } from './file-dragdrop-handler';
 import { IPCRegistry } from './ipc-registry';
@@ -21,7 +22,8 @@ export function setupIPCHandlers(
   templatesManager: PromptTemplatesManager,
   historyManager: HistoryManager,
   checkpointManager: CheckpointManager,
-  sessionPool: SessionPool
+  sessionPool: SessionPool,
+  agentTeamManager: AgentTeamManager
 ): void {
   // Connect managers to window
   sessionManager.setMainWindow(mainWindow);
@@ -274,6 +276,38 @@ export function setupIPCHandlers(
   registry.handle('getCheckpointCount', async (_e, sessionId) => {
     try { return checkpointManager.getCheckpointCount(sessionId); }
     catch (err) { console.error('Failed to get checkpoint count:', err); return 0; }
+  });
+
+  // ── Agent Teams ──
+
+  registry.handle('getTeams', async () => agentTeamManager.getTeams());
+
+  registry.handle('getTeamForSession', async (_e, sessionId) => {
+    return agentTeamManager.getTeamForSession(sessionId);
+  });
+
+  registry.handle('getTeamSessions', async (_e, teamName) => {
+    return agentTeamManager.getTeamSessions(teamName);
+  });
+
+  registry.handle('linkSessionToTeam', async (_e, sessionId, teamName, agentId) => {
+    return agentTeamManager.linkSessionToTeam(sessionId, teamName, agentId);
+  });
+
+  registry.handle('unlinkSessionFromTeam', async (_e, sessionId) => {
+    return agentTeamManager.unlinkSessionFromTeam(sessionId);
+  });
+
+  registry.handle('closeTeam', async (_e, teamName) => {
+    try { return await agentTeamManager.closeTeam(teamName); }
+    catch (err) { console.error('Failed to close team:', err); return false; }
+  });
+
+  registry.handle('updateAutoLayoutTeams', async (_e, enabled) => {
+    try {
+      settingsManager.updateAutoLayoutTeams(enabled);
+      return true;
+    } catch (err) { console.error('Failed to update auto-layout setting:', err); return false; }
   });
 
   // ── App info ──

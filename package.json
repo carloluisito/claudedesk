@@ -18,6 +18,7 @@
     "test": "echo \"No tests configured yet\""
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.0",
     "lucide-react": "^0.563.0",
     "node-pty": "^1.0.0",
     "uuid": "^9.0.0",

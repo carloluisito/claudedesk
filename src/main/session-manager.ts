@@ -381,4 +381,23 @@ export class SessionManager {
   getSessionCount(): number {
     return this.sessions.size;
   }
+
+  // Get all session metadata (for agent teams)
+  getAllSessionMetadata(): SessionMetadata[] {
+    return Array.from(this.sessions.values()).map(s => s.metadata);
+  }
+
+  // Update team metadata on a session
+  updateSessionTeamMetadata(sessionId: string, teamData: Partial<SessionMetadata>): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+
+    if (teamData.teamName !== undefined) session.metadata.teamName = teamData.teamName;
+    if (teamData.agentId !== undefined) session.metadata.agentId = teamData.agentId;
+    if (teamData.agentType !== undefined) session.metadata.agentType = teamData.agentType;
+    if (teamData.isTeammate !== undefined) session.metadata.isTeammate = teamData.isTeammate;
+
+    this.emitter?.emit('onSessionUpdated', session.metadata);
+    this.persistState();
+  }
 }

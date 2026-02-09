@@ -46,6 +46,7 @@ export class CLIManager {
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         CLAUDEDESK_LOCKED_DIR: this.options.workingDirectory,
+        CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       } as { [key: string]: string },
     });
 
@@ -125,6 +126,7 @@ export class CLIManager {
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
         CLAUDEDESK_LOCKED_DIR: this.options.workingDirectory,
+        CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
       } as { [key: string]: string },
     });
 

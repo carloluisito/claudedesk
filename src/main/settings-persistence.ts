@@ -339,6 +339,11 @@ export class SettingsManager {
     return this.settings.sessionPoolSettings || defaults.sessionPoolSettings!;
   }
 
+  updateAutoLayoutTeams(enabled: boolean): void {
+    this.settings.autoLayoutTeams = enabled;
+    saveSettings(this.settings);
+  }
+
   validateSplitViewState(validSessionIds: string[]): void {
     if (!this.settings.splitViewState) {
       return;

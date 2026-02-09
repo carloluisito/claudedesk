@@ -22,6 +22,8 @@ interface TabBarProps {
   onOpenHistory?: () => void;
   onOpenCheckpoints?: () => void;
   onCreateCheckpoint?: () => void;
+  onOpenTeams?: () => void;
+  teamCount?: number;
   isSplitActive?: boolean;
   onToggleSplit?: () => void;
   visibleSessionIds?: string[];
@@ -49,6 +51,8 @@ export function TabBar({
   onOpenHistory,
   onOpenCheckpoints,
   onCreateCheckpoint,
+  onOpenTeams,
+  teamCount = 0,
   isSplitActive = false,
   onToggleSplit,
   visibleSessionIds = [],
@@ -292,6 +296,23 @@ export function TabBar({
           <span className="count-separator">/</span>
           <span className="count-max">10</span>
         </div>
+
+        {/* Teams button */}
+        {onOpenTeams && (
+          <button
+            className={`teams-btn ${teamCount > 0 ? 'has-teams' : ''}`}
+            onClick={onOpenTeams}
+            title="Agent Teams"
+            aria-label="Agent Teams"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+            </svg>
+            {teamCount > 0 && <span className="teams-badge">{teamCount}</span>}
+          </button>
+        )}
 
         {/* Split toggle button */}
         {onToggleSplit && (
@@ -586,6 +607,54 @@ export function TabBar({
 
         .settings-btn:active {
           transform: scale(0.95);
+        }
+
+        .teams-btn {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          color: #565f89;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .teams-btn:hover {
+          background: #1e2030;
+          border-color: #292e42;
+          color: #7aa2f7;
+        }
+
+        .teams-btn.has-teams {
+          color: #7aa2f7;
+        }
+
+        .teams-btn:active {
+          transform: scale(0.95);
+        }
+
+        .teams-badge {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          min-width: 12px;
+          height: 12px;
+          padding: 0 3px;
+          background: #7aa2f7;
+          border-radius: 6px;
+          font-size: 8px;
+          font-weight: 700;
+          color: #1a1b26;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
         }
       `}</style>
     </>

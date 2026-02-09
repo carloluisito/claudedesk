@@ -66,6 +66,15 @@ _Screenshots coming soon! For now, see [Features](#-features) for a detailed ove
 - **Custom theme** - Tokyo Night inspired dark theme
 - **Monospace font** - JetBrains Mono for optimal readability
 
+### Agent Teams
+- **Automatic team detection** - monitors `~/.claude/teams/` for agent team activity
+- **Team Panel** - sidebar showing team hierarchy, members, and status
+- **Task Board** - Kanban-style visualization of team tasks
+- **Message Stream** - real-time inter-agent communication feed
+- **Agent Graph** - interactive node-based relationship visualization
+- **Auto-layout** - automatically arranges panes when teammates join
+- See [Agent Teams Guide](docs/AGENT_TEAMS.md) and [Quick Start](docs/QUICKSTART_AGENT_TEAMS.md)
+
 ### Session Control
 - **Permission modes** - control Claude's access level per session
 - **Ctrl+C handling** - graceful session termination with confirmation

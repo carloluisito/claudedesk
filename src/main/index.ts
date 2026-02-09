@@ -7,6 +7,7 @@ import { SettingsManager } from './settings-persistence';
 import { PromptTemplatesManager } from './prompt-templates-manager';
 import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
+import { AgentTeamManager } from './agent-team-manager';
 import { setupIPCHandlers, removeIPCHandlers } from './ipc-handlers';
 import { WindowState } from '../shared/ipc-types';
 
@@ -21,6 +22,7 @@ let settingsManager: SettingsManager | null = null;
 let templatesManager: PromptTemplatesManager | null = null;
 let historyManager: HistoryManager | null = null;
 let checkpointManager: CheckpointManager | null = null;
+let agentTeamManager: AgentTeamManager | null = null;
 
 const CONFIG_DIR = path.join(app.getPath('home'), '.claudedesk');
 const WINDOW_STATE_FILE = path.join(CONFIG_DIR, 'window-state.json');
@@ -127,6 +129,15 @@ function createWindow(): void {
   const validSessionIds = sessionList.sessions.map(s => s.id);
   settingsManager.validateSplitViewState(validSessionIds);
 
+  // Initialize agent team manager
+  agentTeamManager = new AgentTeamManager();
+  agentTeamManager.setMainWindow(mainWindow);
+  agentTeamManager.setSessionAccessors(
+    () => sessionManager!.getAllSessionMetadata(),
+    (sessionId, teamData) => sessionManager!.updateSessionTeamMetadata(sessionId, teamData),
+    (sessionId) => sessionManager!.closeSession(sessionId),
+  );
+
   // Setup IPC handlers with pool reference
   setupIPCHandlers(
     mainWindow,
@@ -135,7 +146,8 @@ function createWindow(): void {
     templatesManager,
     historyManager,
     checkpointManager,
-    sessionPool
+    sessionPool,
+    agentTeamManager
   );
 
   // Initialize pool (delayed, async)
@@ -146,6 +158,15 @@ function createWindow(): void {
       });
     }
   }, 2500); // 2.5 second delay to avoid slowing app startup
+
+  // Initialize agent team manager (delayed to avoid slowing app startup)
+  setTimeout(() => {
+    if (agentTeamManager) {
+      agentTeamManager.initialize().catch(err => {
+        console.error('Failed to initialize agent team manager:', err);
+      });
+    }
+  }, 1500);
 
   // Run history cleanup on startup
   historyManager.runCleanup().catch(err => {
@@ -178,6 +199,10 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     removeIPCHandlers();
+    if (agentTeamManager) {
+      agentTeamManager.destroy();
+      agentTeamManager = null;
+    }
     if (sessionManager) {
       sessionManager.destroyAll();
       sessionManager = null;

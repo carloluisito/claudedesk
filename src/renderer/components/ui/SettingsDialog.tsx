@@ -42,6 +42,9 @@ export function SettingsDialog({
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null);
   const [deleteTemplateConfirm, setDeleteTemplateConfirm] = useState<string | null>(null);
 
+  // Auto-layout teams state
+  const [autoLayoutTeams, setAutoLayoutTeams] = useState(true);
+
   // Session pool state
   const [poolSettings, setPoolSettings] = useState<SessionPoolSettings>({
     enabled: true,
@@ -87,6 +90,9 @@ export function SettingsDialog({
       const settings = await window.electronAPI.getSettings();
       if (settings.sessionPoolSettings) {
         setPoolSettings(settings.sessionPoolSettings);
+      }
+      if (settings.autoLayoutTeams !== undefined) {
+        setAutoLayoutTeams(settings.autoLayoutTeams);
       }
       await loadPoolStatus();
     } catch (err) {
@@ -378,19 +384,15 @@ export function SettingsDialog({
           {/* General Section */}
           {activeTab === 'general' && (
           <div className="settings-section">
-            <div className="section-header">
-              <h3 className="section-title">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 1v6m0 6v6m4.22-13.22l-1.42 1.42M7.76 16.24l-1.42 1.42m13.9-1.42l-1.42-1.42M7.76 7.76L6.34 6.34M23 12h-6m-6 0H1" />
-                </svg>
-                General Settings
-              </h3>
-            </div>
-
             {/* Session Pool Settings */}
             <div className="setting-group">
-              <h4 className="setting-group-title">Session Pool</h4>
+              <div className="setting-group-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                  <path d="M8 21h8m-4-4v4" />
+                </svg>
+                <h4 className="setting-group-title">Session Pool</h4>
+              </div>
               <p className="setting-group-description">
                 Pre-spawn shell processes to speed up session creation. Saves ~150-250ms per session.
               </p>
@@ -410,8 +412,8 @@ export function SettingsDialog({
               {poolSettings.enabled && (
                 <>
                   <div className="setting-item">
-                    <label className="setting-label">
-                      Pool Size
+                    <div className="setting-label">Pool Size</div>
+                    <div className="setting-select-wrapper">
                       <select
                         className="setting-select"
                         value={poolSettings.poolSize}
@@ -422,7 +424,10 @@ export function SettingsDialog({
                         <option value={2}>2 sessions</option>
                         <option value={3}>3 sessions</option>
                       </select>
-                    </label>
+                      <svg className="setting-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </div>
                     <p className="setting-hint">
                       Number of pre-spawned idle shells. Higher values use more memory.
                     </p>
@@ -430,14 +435,48 @@ export function SettingsDialog({
 
                   {poolStatus && (
                     <div className="pool-status">
-                      <p className="pool-status-label">Status:</p>
-                      <p className="pool-status-value">
+                      <div className="pool-status-dot" />
+                      <span className="pool-status-value">
                         {poolStatus.idleCount} / {poolStatus.size} idle sessions ready
-                      </p>
+                      </span>
                     </div>
                   )}
                 </>
               )}
+            </div>
+
+            {/* Agent Teams Settings */}
+            <div className="setting-group">
+              <div className="setting-group-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                </svg>
+                <h4 className="setting-group-title">Agent Teams</h4>
+              </div>
+              <p className="setting-group-description">
+                Configure how ClaudeDesk handles Claude Code's Agent Teams feature.
+              </p>
+
+              <div className="setting-item">
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={autoLayoutTeams}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setAutoLayoutTeams(enabled);
+                      window.electronAPI.updateAutoLayoutTeams(enabled).catch(console.error);
+                    }}
+                  />
+                  <span className="checkbox-indicator" />
+                  <span className="checkbox-label">Auto-layout teams</span>
+                </label>
+                <p className="setting-hint" style={{ paddingLeft: 10 }}>
+                  Automatically arrange split panes when new teammates join.
+                </p>
+              </div>
             </div>
           </div>
           )}
@@ -1509,5 +1548,222 @@ const settingsStyles = `
   .add-submit-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  /* ── General Settings ── */
+
+  .setting-group {
+    padding: 16px;
+    background: #16161e;
+    border: 1px solid #292e42;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .setting-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #c0caf5;
+  }
+
+  .setting-group-header svg {
+    color: #7aa2f7;
+    flex-shrink: 0;
+  }
+
+  .setting-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0caf5;
+    margin: 0;
+    letter-spacing: 0.01em;
+  }
+
+  .setting-group-description {
+    font-size: 11.5px;
+    color: #565f89;
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  .setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Custom checkbox */
+  .setting-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    padding: 8px 10px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+  }
+
+  .setting-checkbox:hover {
+    background: rgba(122, 162, 247, 0.04);
+  }
+
+  .setting-checkbox input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .checkbox-indicator {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #3b4261;
+    border-radius: 4px;
+    background: #1a1b26;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+
+  .checkbox-indicator::after {
+    content: '';
+    position: absolute;
+    top: 1.5px;
+    left: 4.5px;
+    width: 4.5px;
+    height: 8px;
+    border: solid transparent;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+    transition: border-color 0.15s ease;
+  }
+
+  .setting-checkbox input:checked + .checkbox-indicator {
+    background: #7aa2f7;
+    border-color: #7aa2f7;
+  }
+
+  .setting-checkbox input:checked + .checkbox-indicator::after {
+    border-color: #1a1b26;
+  }
+
+  .setting-checkbox:hover .checkbox-indicator {
+    border-color: #565f89;
+  }
+
+  .setting-checkbox input:checked ~ .checkbox-indicator:hover,
+  .setting-checkbox:hover input:checked + .checkbox-indicator {
+    background: #89b4fa;
+    border-color: #89b4fa;
+  }
+
+  .checkbox-label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #a9b1d6;
+  }
+
+  /* Setting label + select */
+  .setting-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #a9b1d6;
+    padding-left: 10px;
+  }
+
+  .setting-select-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .setting-select {
+    width: 100%;
+    height: 34px;
+    padding: 0 32px 0 12px;
+    background: #1a1b26;
+    border: 1px solid #292e42;
+    border-radius: 6px;
+    color: #c0caf5;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: all 0.15s ease;
+  }
+
+  .setting-select:hover {
+    border-color: #3b4261;
+  }
+
+  .setting-select:focus {
+    outline: none;
+    border-color: #7aa2f7;
+    box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.12);
+  }
+
+  .setting-select option {
+    background: #1a1b26;
+    color: #c0caf5;
+    padding: 4px;
+  }
+
+  .setting-select-arrow {
+    position: absolute;
+    right: 10px;
+    color: #565f89;
+    pointer-events: none;
+    transition: color 0.15s ease;
+  }
+
+  .setting-select-wrapper:hover .setting-select-arrow {
+    color: #a9b1d6;
+  }
+
+  .setting-hint {
+    font-size: 11px;
+    color: #565f89;
+    margin: 0;
+    padding-left: 10px;
+    line-height: 1.4;
+  }
+
+  /* Pool status indicator */
+  .pool-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(122, 162, 247, 0.06);
+    border: 1px solid rgba(122, 162, 247, 0.1);
+    border-radius: 6px;
+  }
+
+  .pool-status-dot {
+    width: 6px;
+    height: 6px;
+    background: #9ece6a;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px rgba(158, 206, 106, 0.4);
+    animation: pool-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pool-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .pool-status-value {
+    font-size: 11.5px;
+    color: #7aa2f7;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
   }
 `;

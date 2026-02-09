@@ -20,6 +20,10 @@ export interface SessionMetadata {
   status: SessionStatus;
   createdAt: number;
   exitCode?: number;
+  teamName?: string;
+  agentId?: string;
+  agentType?: 'lead' | 'teammate';
+  isTeammate?: boolean;
 }
 
 // Session list response
@@ -141,6 +145,7 @@ export interface AppSettings {
   dragDropSettings?: DragDropSettings;
   splitViewState?: SplitViewState | null;
   sessionPoolSettings?: SessionPoolSettings;
+  autoLayoutTeams?: boolean;
 }
 
 // Workspace create request
@@ -227,6 +232,52 @@ export interface AppVersionInfo {
   electronVersion: string;
   nodeVersion: string;
   claudeVersion?: string;
+}
+
+// ── Agent Teams types ──
+
+export interface TeamMember {
+  name: string;
+  agentId: string;
+  agentType: 'lead' | 'teammate';
+}
+
+export interface TeamConfig {
+  members: TeamMember[];
+}
+
+export interface Task {
+  taskId: string;
+  subject: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  owner?: string;
+  blockedBy?: string[];
+  blocks?: string[];
+}
+
+export interface TeamInfo {
+  name: string;
+  leadSessionId?: string;
+  members: TeamMember[];
+  tasks: Task[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TeammateDetectedEvent {
+  teamName: string;
+  member: TeamMember;
+  sessionId?: string;
+}
+
+export interface TasksUpdatedEvent {
+  teamName: string;
+  tasks: Task[];
+}
+
+export interface TeamRemovedEvent {
+  teamName: string;
 }
 
 // Re-export types from sub-modules for convenience
