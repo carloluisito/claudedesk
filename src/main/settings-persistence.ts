@@ -13,6 +13,7 @@ import {
   SessionPoolSettings,
   LayoutNode,
 } from '../shared/ipc-types';
+import type { AtlasSettings } from '../shared/types/atlas-types';
 
 const CONFIG_DIR = path.join(app.getPath('home'), '.claudedesk');
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
@@ -45,6 +46,14 @@ function getDefaultSettings(): AppSettings {
       enabled: true,
       poolSize: 1,
       maxIdleTimeMs: 300000, // 5 minutes
+    },
+    atlasSettings: {
+      enableAtlas: true,
+      maxInlineTags: 20,
+      domainInferenceSensitivity: 'medium',
+      atlasOutputLocation: 'root',
+      excludePatterns: [],
+      scanTimeoutMs: 30000,
     },
   };
 }
@@ -128,6 +137,9 @@ export function loadSettings(): AppSettings {
       }
       if (!settings.sessionPoolSettings) {
         settings.sessionPoolSettings = defaults.sessionPoolSettings;
+      }
+      if (!settings.atlasSettings) {
+        settings.atlasSettings = defaults.atlasSettings;
       }
 
       return settings;
@@ -337,6 +349,21 @@ export class SettingsManager {
   getSessionPoolSettings(): SessionPoolSettings {
     const defaults = getDefaultSettings();
     return this.settings.sessionPoolSettings || defaults.sessionPoolSettings!;
+  }
+
+  getAtlasSettings(): AtlasSettings {
+    const defaults = getDefaultSettings();
+    return this.settings.atlasSettings || defaults.atlasSettings!;
+  }
+
+  updateAtlasSettings(settings: Partial<AtlasSettings>): AtlasSettings {
+    const defaults = getDefaultSettings();
+    this.settings.atlasSettings = {
+      ...(this.settings.atlasSettings || defaults.atlasSettings!),
+      ...settings,
+    };
+    saveSettings(this.settings);
+    return this.settings.atlasSettings;
   }
 
   updateAutoLayoutTeams(enabled: boolean): void {

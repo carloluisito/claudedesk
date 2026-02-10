@@ -284,6 +284,12 @@ describe('fuzzySearch', () => {
 
 5. **Ensure CI passes** - Once CI is set up, all checks must pass
 
+### Keeping the Atlas Current
+
+If your PR adds, removes, or renames source files:
+- Update `docs/repo-index.md` with the new file(s)
+- If a new domain is introduced, add it to the Domain Map in `CLAUDE.md`
+
 ### PR Title Format
 
 Use conventional commit style:

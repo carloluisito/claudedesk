@@ -22,6 +22,7 @@ interface TabBarProps {
   onOpenHistory?: () => void;
   onOpenCheckpoints?: () => void;
   onCreateCheckpoint?: () => void;
+  onOpenAtlas?: () => void;
   onOpenTeams?: () => void;
   teamCount?: number;
   isSplitActive?: boolean;
@@ -51,6 +52,7 @@ export function TabBar({
   onOpenHistory,
   onOpenCheckpoints,
   onCreateCheckpoint,
+  onOpenAtlas,
   onOpenTeams,
   teamCount = 0,
   isSplitActive = false,
@@ -296,6 +298,22 @@ export function TabBar({
           <span className="count-separator">/</span>
           <span className="count-max">10</span>
         </div>
+
+        {/* Atlas button */}
+        {onOpenAtlas && (
+          <button
+            className="atlas-btn-toolbar"
+            onClick={onOpenAtlas}
+            title="Repository Atlas"
+            aria-label="Repository Atlas"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+              <line x1="8" y1="2" x2="8" y2="18" />
+              <line x1="16" y1="6" x2="16" y2="22" />
+            </svg>
+          </button>
+        )}
 
         {/* Teams button */}
         {onOpenTeams && (
@@ -655,6 +673,31 @@ export function TabBar({
           align-items: center;
           justify-content: center;
           line-height: 1;
+        }
+
+        .atlas-btn-toolbar {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          color: #565f89;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          flex-shrink: 0;
+        }
+
+        .atlas-btn-toolbar:hover {
+          background: #1e2030;
+          border-color: #292e42;
+          color: #7aa2f7;
+        }
+
+        .atlas-btn-toolbar:active {
+          transform: scale(0.95);
         }
       `}</style>
     </>

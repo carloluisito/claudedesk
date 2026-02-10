@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![Version](https://img.shields.io/badge/version-4.2.0-green.svg)
+![Version](https://img.shields.io/badge/version-4.3.0-green.svg)
 
 > A powerful desktop terminal for Claude Code CLI with multi-session management, split-view layouts, and advanced productivity features.
 
@@ -75,6 +75,14 @@ _Screenshots coming soon! For now, see [Features](#-features) for a detailed ove
 - **Auto-layout** - automatically arranges panes when teammates join
 - **Lifecycle management** - stale teams auto-cleaned on startup; teams removed when sessions end
 - See [Agent Teams Guide](docs/AGENT_TEAMS.md) and [Quick Start](docs/QUICKSTART_AGENT_TEAMS.md)
+
+### Repository Atlas Engine
+- **Automated codebase mapping** - scans files, analyzes imports, infers domain boundaries
+- **CLAUDE.md generation** - creates architectural atlas for AI tools to navigate the repo
+- **Domain-to-file index** - generates `docs/repo-index.md` with per-domain file tables
+- **Inline entrypoint tags** - suggests `@atlas-entrypoint` comments for key files
+- **Preview and approve** - review generated content before writing to disk
+- **Configurable settings** - domain sensitivity, max inline tags, exclude patterns
 
 ### Session Control
 - **Permission modes** - control Claude's access level per session

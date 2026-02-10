@@ -1,3 +1,4 @@
+// @atlas-entrypoint: IPC single source of truth — 80 methods, auto-derives preload bridge and types
 /**
  * IPC Contract — Single source of truth for all IPC methods.
  *
@@ -52,6 +53,16 @@ import type {
   CheckpointCreateRequest,
   CheckpointExportFormat,
 } from './types/checkpoint-types';
+
+import type {
+  AtlasGenerateRequest,
+  AtlasGenerateResult,
+  AtlasWriteRequest,
+  AtlasWriteResult,
+  AtlasStatus,
+  AtlasSettings,
+  AtlasScanProgress,
+} from './types/atlas-types';
 
 // ─── Contract helper types ──────────────────────────────────────────
 
@@ -187,6 +198,16 @@ export interface IPCContractMap {
   onTasksUpdated:      EventContract<'teams:tasksUpdated',    TasksUpdatedEvent>;
   onTeamRemoved:       EventContract<'teams:removed',         TeamRemovedEvent>;
 
+  // ── Repository Atlas (invoke) ──
+  generateAtlas:       InvokeContract<'atlas:generate',       [AtlasGenerateRequest],             AtlasGenerateResult>;
+  writeAtlas:          InvokeContract<'atlas:write',          [AtlasWriteRequest],                AtlasWriteResult>;
+  getAtlasStatus:      InvokeContract<'atlas:getStatus',      [string],                           AtlasStatus>;
+  getAtlasSettings:    InvokeContract<'atlas:getSettings',    [],                                 AtlasSettings>;
+  updateAtlasSettings: InvokeContract<'atlas:updateSettings', [Partial<AtlasSettings>],           AtlasSettings>;
+
+  // ── Repository Atlas events (main→renderer) ──
+  onAtlasScanProgress: EventContract<'atlas:scanProgress', AtlasScanProgress>;
+
   // ── App info (invoke) ──
   getVersionInfo:      InvokeContract<'app:getVersionInfo', [],                                  AppVersionInfo>;
 }
@@ -302,6 +323,16 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   onTasksUpdated:      'teams:tasksUpdated',
   onTeamRemoved:       'teams:removed',
 
+  // Repository Atlas
+  generateAtlas:       'atlas:generate',
+  writeAtlas:          'atlas:write',
+  getAtlasStatus:      'atlas:getStatus',
+  getAtlasSettings:    'atlas:getSettings',
+  updateAtlasSettings: 'atlas:updateSettings',
+
+  // Repository Atlas events
+  onAtlasScanProgress: 'atlas:scanProgress',
+
   // App info
   getVersionInfo:      'app:getVersionInfo',
 };
@@ -400,6 +431,14 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   onTeammateAdded:     'event',
   onTasksUpdated:      'event',
   onTeamRemoved:       'event',
+
+  generateAtlas:       'invoke',
+  writeAtlas:          'invoke',
+  getAtlasStatus:      'invoke',
+  getAtlasSettings:    'invoke',
+  updateAtlasSettings: 'invoke',
+
+  onAtlasScanProgress: 'event',
 
   getVersionInfo:      'invoke',
 };

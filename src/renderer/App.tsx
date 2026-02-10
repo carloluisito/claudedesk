@@ -1,3 +1,4 @@
+// @atlas-entrypoint: Root React component — composes all hooks, panels, and dialogs
 import { useState, useEffect, useCallback } from 'react';
 import { MultiTerminal } from './components/Terminal';
 import {
@@ -18,11 +19,13 @@ import { PaneSessionPicker } from './components/PaneSessionPicker';
 import { TitleBarBranding } from './components/TitleBarBranding';
 import { AboutDialog } from './components/AboutDialog';
 import { TeamPanel } from './components/TeamPanel';
+import { AtlasPanel } from './components/AtlasPanel';
 import { useSessionManager } from './hooks/useSessionManager';
 import { useQuota } from './hooks/useQuota';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useSplitView } from './hooks/useSplitView';
 import { useAgentTeams } from './hooks/useAgentTeams';
+import { useAtlas } from './hooks/useAtlas';
 import { useAutoTeamLayout } from './hooks/useAutoTeamLayout';
 import { Workspace, PermissionMode, WorkspaceValidationResult } from '../shared/ipc-types';
 import { PromptTemplate } from '../shared/types/prompt-templates';
@@ -74,6 +77,12 @@ function App() {
     assignSession,
     focusedPaneId,
   });
+
+  // Atlas Engine
+  const atlasSession = sessions.find(s => s.id === activeSessionId);
+  const atlasProjectPath = atlasSession?.workingDirectory || null;
+  const atlas = useAtlas(atlasProjectPath);
+  const [showAtlasPanel, setShowAtlasPanel] = useState(false);
 
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -584,6 +593,7 @@ function App() {
         isDialogOpen={showNewSessionDialog}
         onDialogOpenChange={setShowNewSessionDialog}
         workspaces={workspaces}
+        onOpenAtlas={() => setShowAtlasPanel(true)}
         onOpenTeams={() => setShowTeamPanel(true)}
         teamCount={teams.length}
         onOpenSettings={() => setShowSettingsDialog(true)}
@@ -701,6 +711,25 @@ function App() {
         isDangerous={true}
         onConfirm={handleConfirmClose}
         onCancel={() => setConfirmClose(null)}
+      />
+
+      {/* Atlas panel */}
+      <AtlasPanel
+        isOpen={showAtlasPanel}
+        onClose={() => setShowAtlasPanel(false)}
+        projectPath={atlasProjectPath}
+        isScanning={atlas.isScanning}
+        scanProgress={atlas.scanProgress}
+        scanResult={atlas.scanResult}
+        generatedContent={atlas.generatedContent}
+        atlasStatus={atlas.atlasStatus}
+        error={atlas.error}
+        onGenerate={() => atlas.generateAtlas()}
+        onWrite={async (claudeMd, repoIndex, inlineTags) => {
+          const result = await atlas.writeAtlas(claudeMd, repoIndex, inlineTags);
+          return result !== null && (result.claudeMdWritten || result.repoIndexWritten);
+        }}
+        onReset={atlas.reset}
       />
 
       {/* Team panel */}

@@ -1,3 +1,4 @@
+// @atlas-entrypoint: Main process — creates window, initializes all 8 managers, wires IPC
 import { app, BrowserWindow, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -8,6 +9,7 @@ import { PromptTemplatesManager } from './prompt-templates-manager';
 import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { AgentTeamManager } from './agent-team-manager';
+import { AtlasManager } from './atlas-manager';
 import { setupIPCHandlers, removeIPCHandlers } from './ipc-handlers';
 import { WindowState } from '../shared/ipc-types';
 
@@ -23,6 +25,7 @@ let templatesManager: PromptTemplatesManager | null = null;
 let historyManager: HistoryManager | null = null;
 let checkpointManager: CheckpointManager | null = null;
 let agentTeamManager: AgentTeamManager | null = null;
+let atlasManager: AtlasManager | null = null;
 
 const CONFIG_DIR = path.join(app.getPath('home'), '.claudedesk');
 const WINDOW_STATE_FILE = path.join(CONFIG_DIR, 'window-state.json');
@@ -129,6 +132,10 @@ function createWindow(): void {
   const validSessionIds = sessionList.sessions.map(s => s.id);
   settingsManager.validateSplitViewState(validSessionIds);
 
+  // Initialize atlas manager
+  atlasManager = new AtlasManager();
+  atlasManager.setMainWindow(mainWindow);
+
   // Initialize agent team manager
   agentTeamManager = new AgentTeamManager();
   agentTeamManager.setMainWindow(mainWindow);
@@ -152,7 +159,8 @@ function createWindow(): void {
     historyManager,
     checkpointManager,
     sessionPool,
-    agentTeamManager
+    agentTeamManager,
+    atlasManager
   );
 
   // Initialize pool (delayed, async)
@@ -204,6 +212,10 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     removeIPCHandlers();
+    if (atlasManager) {
+      atlasManager.destroy();
+      atlasManager = null;
+    }
     if (agentTeamManager) {
       agentTeamManager.destroy();
       agentTeamManager = null;

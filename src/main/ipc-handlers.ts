@@ -9,6 +9,7 @@ import { PromptTemplatesManager } from './prompt-templates-manager';
 import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { AgentTeamManager } from './agent-team-manager';
+import { AtlasManager } from './atlas-manager';
 import { queryClaudeQuota, clearQuotaCache, getBurnRate } from './quota-service';
 import { getFileInfo, readFileContent } from './file-dragdrop-handler';
 import { IPCRegistry } from './ipc-registry';
@@ -23,7 +24,8 @@ export function setupIPCHandlers(
   historyManager: HistoryManager,
   checkpointManager: CheckpointManager,
   sessionPool: SessionPool,
-  agentTeamManager: AgentTeamManager
+  agentTeamManager: AgentTeamManager,
+  atlasManager: AtlasManager
 ): void {
   // Connect managers to window
   sessionManager.setMainWindow(mainWindow);
@@ -308,6 +310,30 @@ export function setupIPCHandlers(
       settingsManager.updateAutoLayoutTeams(enabled);
       return true;
     } catch (err) { console.error('Failed to update auto-layout setting:', err); return false; }
+  });
+
+  // ── Repository Atlas ──
+
+  registry.handle('generateAtlas', async (_e, request) => {
+    try { return await atlasManager.generateAtlas(request); }
+    catch (err) { console.error('Failed to generate atlas:', err); throw err; }
+  });
+
+  registry.handle('writeAtlas', async (_e, request) => {
+    try { return await atlasManager.writeAtlas(request); }
+    catch (err) { console.error('Failed to write atlas:', err); throw err; }
+  });
+
+  registry.handle('getAtlasStatus', async (_e, projectPath) => {
+    try { return await atlasManager.getStatus(projectPath); }
+    catch (err) { console.error('Failed to get atlas status:', err); throw err; }
+  });
+
+  registry.handle('getAtlasSettings', async () => settingsManager.getAtlasSettings());
+
+  registry.handle('updateAtlasSettings', async (_e, settings) => {
+    try { return settingsManager.updateAtlasSettings(settings); }
+    catch (err) { console.error('Failed to update atlas settings:', err); throw err; }
   });
 
   // ── App info ──

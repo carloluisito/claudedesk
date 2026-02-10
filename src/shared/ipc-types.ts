@@ -146,6 +146,7 @@ export interface AppSettings {
   splitViewState?: SplitViewState | null;
   sessionPoolSettings?: SessionPoolSettings;
   autoLayoutTeams?: boolean;
+  atlasSettings?: import('./types/atlas-types').AtlasSettings;
 }
 
 // Workspace create request
@@ -302,4 +303,23 @@ export type {
   CheckpointCreateRequest,
   CheckpointExportFormat,
 } from './types/checkpoint-types';
+
+export type {
+  AtlasSettings,
+  AtlasGenerateRequest,
+  AtlasGenerateResult,
+  AtlasWriteRequest,
+  AtlasWriteResult,
+  AtlasStatus,
+  AtlasScanProgress,
+  AtlasScanResult,
+  AtlasGeneratedContent,
+  InlineTag,
+  SourceFileInfo,
+  InferredDomain,
+  CrossDependency,
+  SupportedLanguage,
+  DomainSensitivity,
+  AtlasOutputLocation,
+} from './types/atlas-types';
 

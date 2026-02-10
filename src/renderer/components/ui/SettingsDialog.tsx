@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Workspace, WorkspaceValidationResult, PermissionMode, SessionPoolSettings } from '../../../shared/ipc-types';
+import type { AtlasSettings, DomainSensitivity } from '../../../shared/types/atlas-types';
 import { PromptTemplate } from '../../../shared/types/prompt-templates';
 import { TemplateEditor } from '../TemplateEditor';
 import { DragDropSettings } from '../DragDropSettings';
@@ -31,7 +32,7 @@ export function SettingsDialog({
   onValidatePath,
 }: SettingsDialogProps) {
   const [isAnimating, setIsAnimating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'workspaces' | 'templates' | 'dragdrop'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'workspaces' | 'templates' | 'dragdrop' | 'atlas'>('general');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editing, setEditing] = useState<EditingState>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -53,6 +54,17 @@ export function SettingsDialog({
   });
   const [poolStatus, setPoolStatus] = useState<{ idleCount: number; enabled: boolean; size: number } | null>(null);
 
+  // Atlas settings state
+  const [atlasSettings, setAtlasSettings] = useState<AtlasSettings>({
+    enableAtlas: true,
+    maxInlineTags: 20,
+    domainInferenceSensitivity: 'medium',
+    atlasOutputLocation: 'root',
+    excludePatterns: [],
+    scanTimeoutMs: 30000,
+  });
+  const [excludePatternsText, setExcludePatternsText] = useState('');
+
   // Add form state
   const [newName, setNewName] = useState('');
   const [newPath, setNewPath] = useState('');
@@ -73,6 +85,7 @@ export function SettingsDialog({
       resetAddForm();
       loadTemplates();
       loadPoolSettings();
+      loadAtlasSettings();
     }
   }, [isOpen]);
 
@@ -129,6 +142,33 @@ export function SettingsDialog({
     } catch (err) {
       console.error('Failed to update pool size:', err);
     }
+  };
+
+  const loadAtlasSettings = async () => {
+    try {
+      const settings = await window.electronAPI.getAtlasSettings();
+      setAtlasSettings(settings);
+      setExcludePatternsText(settings.excludePatterns.join(', '));
+    } catch (err) {
+      console.error('Failed to load atlas settings:', err);
+    }
+  };
+
+  const updateAtlasSetting = async <K extends keyof AtlasSettings>(key: K, value: AtlasSettings[K]) => {
+    try {
+      const updated = await window.electronAPI.updateAtlasSettings({ [key]: value });
+      setAtlasSettings(updated);
+    } catch (err) {
+      console.error('Failed to update atlas setting:', err);
+    }
+  };
+
+  const handleExcludePatternsBlur = () => {
+    const patterns = excludePatternsText
+      .split(',')
+      .map(p => p.trim())
+      .filter(Boolean);
+    updateAtlasSetting('excludePatterns', patterns);
   };
 
   useEffect(() => {
@@ -377,6 +417,17 @@ export function SettingsDialog({
               <circle cx="12" cy="12" r="9" />
             </svg>
             Drag & Drop
+          </button>
+          <button
+            className={`settings-tab ${activeTab === 'atlas' ? 'active' : ''}`}
+            onClick={() => setActiveTab('atlas')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+              <line x1="8" y1="2" x2="8" y2="18" />
+              <line x1="16" y1="6" x2="16" y2="22" />
+            </svg>
+            Atlas
           </button>
         </div>
 
@@ -833,6 +884,102 @@ export function SettingsDialog({
             <DragDropSettings
               onClose={handleClose}
             />
+          )}
+
+          {/* Atlas Section */}
+          {activeTab === 'atlas' && (
+          <div className="settings-section">
+            <div className="setting-group">
+              <div className="setting-group-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+                  <line x1="8" y1="2" x2="8" y2="18" />
+                  <line x1="16" y1="6" x2="16" y2="22" />
+                </svg>
+                <h4 className="setting-group-title">Repository Atlas</h4>
+              </div>
+              <p className="setting-group-description">
+                Configure how the Atlas Engine scans and generates codebase documentation.
+              </p>
+
+              <div className="setting-item">
+                <label className="setting-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={atlasSettings.enableAtlas}
+                    onChange={(e) => updateAtlasSetting('enableAtlas', e.target.checked)}
+                  />
+                  <span className="checkbox-indicator" />
+                  <span className="checkbox-label">Enable Atlas Engine</span>
+                </label>
+              </div>
+
+              <div className="setting-item">
+                <label className="setting-label">Domain Inference Sensitivity</label>
+                <select
+                  className="setting-select"
+                  value={atlasSettings.domainInferenceSensitivity}
+                  onChange={(e) => updateAtlasSetting('domainInferenceSensitivity', e.target.value as DomainSensitivity)}
+                >
+                  <option value="low">Low (directory only)</option>
+                  <option value="medium">Medium (+ import clustering)</option>
+                  <option value="high">High (+ naming conventions)</option>
+                </select>
+                <p className="setting-hint">
+                  Controls how aggressively files are grouped into domains.
+                </p>
+              </div>
+
+              <div className="setting-item">
+                <label className="setting-label">Max Inline Tags</label>
+                <input
+                  type="number"
+                  className="setting-input"
+                  min={0}
+                  max={50}
+                  value={atlasSettings.maxInlineTags}
+                  onChange={(e) => updateAtlasSetting('maxInlineTags', Math.min(50, Math.max(0, Number(e.target.value))))}
+                  style={{ width: 80 }}
+                />
+                <p className="setting-hint">
+                  Maximum @atlas-entrypoint comments to suggest (0-50).
+                </p>
+              </div>
+
+              <div className="setting-item">
+                <label className="setting-label">Scan Timeout (ms)</label>
+                <input
+                  type="number"
+                  className="setting-input"
+                  min={5000}
+                  max={120000}
+                  step={5000}
+                  value={atlasSettings.scanTimeoutMs}
+                  onChange={(e) => updateAtlasSetting('scanTimeoutMs', Number(e.target.value))}
+                  style={{ width: 100 }}
+                />
+                <p className="setting-hint">
+                  Maximum scan duration before timeout.
+                </p>
+              </div>
+
+              <div className="setting-item">
+                <label className="setting-label">Exclude Patterns</label>
+                <input
+                  type="text"
+                  className="setting-input"
+                  value={excludePatternsText}
+                  onChange={(e) => setExcludePatternsText(e.target.value)}
+                  onBlur={handleExcludePatternsBlur}
+                  placeholder="e.g. fixtures, snapshots, generated"
+                  style={{ width: '100%' }}
+                />
+                <p className="setting-hint">
+                  Comma-separated directory names to exclude from scanning (in addition to defaults like node_modules, dist, .git).
+                </p>
+              </div>
+            </div>
+          </div>
           )}
         </div>
       </div>
