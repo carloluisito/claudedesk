@@ -11,9 +11,9 @@ Electron 28 | React 18 | TypeScript | xterm.js | node-pty | Tailwind CSS | react
 ```
 ┌─────────────────────────────────────────────┐
 │  Main Process (Node.js)                     │
-│  8 managers + IPC handlers + session pool   │
+│  9 managers + IPC handlers + session pool   │
 └──────────────────┬──────────────────────────┘
-                   │ IPC (80 methods)
+                   │ IPC (102 methods)
 ┌──────────────────┴──────────────────────────┐
 │  Preload (auto-derived context bridge)      │
 └──────────────────┬──────────────────────────┘
@@ -26,7 +26,7 @@ Electron 28 | React 18 | TypeScript | xterm.js | node-pty | Tailwind CSS | react
 
 **3-layer pattern per domain:** Manager (main) → Hook (renderer) → Components (renderer)
 
-**IPC contract** (`src/shared/ipc-contract.ts`) is the single source of truth — 80 methods. The preload bridge and `ElectronAPI` type are auto-derived from it.
+**IPC contract** (`src/shared/ipc-contract.ts`) is the single source of truth — 102 methods. The preload bridge and `ElectronAPI` type are auto-derived from it.
 
 ## Domain Map
 
@@ -42,6 +42,7 @@ Electron 28 | React 18 | TypeScript | xterm.js | node-pty | Tailwind CSS | react
 | Drag-Drop | file-dragdrop-handler, file-utils | useDragDrop, DragDropOverlay, DragDropContextMenu, DragDropSettings | ipc-types.ts | `dragdrop:*` |
 | Workspaces | settings-persistence | SettingsDialog | ipc-types.ts | `workspace:*` |
 | Atlas | atlas-manager | useAtlas, AtlasPanel | types/atlas-types.ts | `atlas:*` |
+| Git | git-manager | useGit, GitPanel, CommitDialog | types/git-types.ts | `git:*` |
 | Window | index.ts | ConfirmDialog, SettingsDialog, AboutDialog, TitleBarBranding | ipc-types.ts | `window:*`, `dialog:*` |
 
 ## Adding a New IPC Method
@@ -70,6 +71,38 @@ That's it. The preload bridge and types auto-derive.
 - **IPC contract**: One entry in `IPCContractMap` = auto-derived channel, kind, preload bridge method, and TypeScript type. No manual wiring needed.
 - **Split view**: `useSplitView` manages a tree of leaf/branch nodes. Max 4 panes. State persisted in settings.
 - **Agent team detection**: `AgentTeamManager` watches `~/.claude/teams/` and `~/.claude/tasks/` via `fs.watch()`. Auto-links sessions within 30s of team creation.
+- **Git integration**: `GitManager` uses `child_process.execFile` (not `exec` — prevents shell injection). Per-directory mutex serializes operations. `.git` directory watching with 500ms debounce for real-time status. Heuristic-based AI commit message generation (conventional commits format).
+
+## Testing
+
+Vitest 4 + @testing-library/react + Playwright for Electron.
+
+**Run tests:**
+```bash
+npm test                    # All unit + integration tests
+npm run test:unit           # shared + main only
+npm run test:integration    # renderer only (jsdom)
+npm run test:e2e            # Playwright E2E (requires built app)
+npm run test:coverage       # With coverage report
+npm run test:ci             # CI mode (coverage + JUnit XML)
+```
+
+**3 workspace projects** (configured in `vitest.workspace.ts`):
+
+| Project | Environment | Setup file | Pattern |
+|---------|-------------|------------|---------|
+| `shared` | node | — | `src/shared/**/*.test.ts` |
+| `main` | node | `test/setup-main.ts` | `src/main/**/*.test.ts` |
+| `renderer` | jsdom | `test/setup-renderer.ts` | `src/renderer/**/*.test.{ts,tsx}` |
+
+**Mock infrastructure:**
+- `test/setup-main.ts` — Mocks `electron` (app, BrowserWindow, ipcMain, dialog, shell) and `node-pty`
+- `test/setup-renderer.ts` — Imports `@testing-library/jest-dom`, resets `window.electronAPI` before each test
+- `test/helpers/electron-api-mock.ts` — Auto-derives comprehensive `window.electronAPI` mock from IPC contract. Use `getElectronAPI()` for per-test customization.
+
+**Extracted utility:** `src/renderer/utils/layout-tree.ts` — 7 pure tree functions extracted from `useSplitView.ts` for testability: `countPanes`, `traverseTree`, `transformTree`, `pruneTree`, `updateRatioAtPath`, `getAllPaneIds`, `getFirstPaneId`.
+
+**Important:** The existing `vite.config.ts` has `root: 'src/renderer'` which conflicts with vitest auto-discovery. All test scripts use `--config vitest.workspace.ts` explicitly.
 
 ## Pitfalls
 

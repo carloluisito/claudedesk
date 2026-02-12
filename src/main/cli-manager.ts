@@ -1,21 +1,28 @@
 import * as pty from 'node-pty';
-import { TerminalSize, PermissionMode } from '../shared/ipc-types';
+import { TerminalSize, PermissionMode, ClaudeModel } from '../shared/ipc-types';
+import { detectModelFromOutput } from '../shared/model-detector';
 
 export interface CLIManagerOptions {
   workingDirectory: string;
   permissionMode: PermissionMode;
+  model?: ClaudeModel;
 }
 
 export class CLIManager {
   private ptyProcess: pty.IPty | null = null;
   private outputCallback: ((data: string) => void) | null = null;
   private exitCallback: ((exitCode: number) => void) | null = null;
+  private modelChangeCallback: ((model: ClaudeModel) => void) | null = null;
   private outputBuffer: string = '';
   private flushTimeout: NodeJS.Timeout | null = null;
   private readonly FLUSH_INTERVAL = 16; // ~60fps, prevents IPC flooding
   private options: CLIManagerOptions;
   private _isRunning: boolean = false;
   private _isInitialized: boolean = false;
+  private currentModel: ClaudeModel | null = null;
+  private initialDetectionBuffer: string = '';
+  private initialDetectionDone: boolean = false;
+  private switchDetectionBuffer: string = '';
 
   constructor(options: CLIManagerOptions) {
     this.options = options;
@@ -41,14 +48,20 @@ export class CLIManager {
    * Phase 2: Activate session (for pool claim).
    * Updates working directory and permission mode, then launches Claude.
    */
-  async initializeSession(workingDirectory: string, permissionMode: PermissionMode): Promise<void> {
+  async initializeSession(workingDirectory: string, permissionMode: PermissionMode, model?: ClaudeModel): Promise<void> {
     if (!this._isRunning || this._isInitialized) {
       throw new Error('Cannot initialize: session is not in correct state');
     }
 
+    // Reset detection state so Phase 1 starts fresh (discard shell output from pool)
+    this.resetDetectionState();
+
     // Update options with actual session parameters
     this.options.workingDirectory = workingDirectory;
     this.options.permissionMode = permissionMode;
+    if (model !== undefined) {
+      this.options.model = model;
+    }
 
     // Change to the target directory (shell was spawned at process.cwd())
     if (process.platform === 'win32') {
@@ -123,15 +136,57 @@ export class CLIManager {
   }
 
   private launchClaudeCommand(): void {
-    const claudeCommand = this.options.permissionMode === 'skip-permissions'
+    let claudeCommand = this.options.permissionMode === 'skip-permissions'
       ? 'claude --dangerously-skip-permissions'
       : 'claude';
+
+    // Add model flag if specified (skip for 'auto' — let CLI decide)
+    if (this.options.model && this.options.model !== 'auto') {
+      claudeCommand += ` --model ${this.options.model}`;
+    }
 
     this.write(`${claudeCommand}\r`);
   }
 
   private bufferOutput(data: string): void {
     this.outputBuffer += data;
+
+    // Phase 1: Initial detection (try on each chunk, give up after 8KB)
+    if (!this.initialDetectionDone) {
+      this.initialDetectionBuffer += data;
+      const result = detectModelFromOutput(this.initialDetectionBuffer, true);
+      if (result.model) {
+        console.log('[ModelDetect] Phase 1 detected:', result.model, '(bufLen:', this.initialDetectionBuffer.length, ')');
+        this.currentModel = result.model;
+        if (this.modelChangeCallback) {
+          this.modelChangeCallback(result.model);
+        }
+        this.initialDetectionDone = true;
+        this.initialDetectionBuffer = '';
+      } else if (this.initialDetectionBuffer.length > 8192) {
+        console.log('[ModelDetect] Phase 1 gave up after 8KB');
+        this.initialDetectionDone = true;
+        this.initialDetectionBuffer = '';
+      }
+    }
+
+    // Phase 2: Switch detection (rolling buffer to handle PTY fragmentation)
+    else {
+      this.switchDetectionBuffer += data;
+      // Keep only last 512 bytes to prevent unbounded growth
+      if (this.switchDetectionBuffer.length > 512) {
+        this.switchDetectionBuffer = this.switchDetectionBuffer.slice(-512);
+      }
+      const result = detectModelFromOutput(this.switchDetectionBuffer, false);
+      if (result.model && result.model !== this.currentModel) {
+        console.log('[ModelDetect] Phase 2 detected:', result.model, '(was:', this.currentModel, ')');
+        this.currentModel = result.model;
+        this.switchDetectionBuffer = ''; // Reset after successful detection
+        if (this.modelChangeCallback) {
+          this.modelChangeCallback(result.model);
+        }
+      }
+    }
 
     if (this.flushTimeout === null) {
       this.flushTimeout = setTimeout(() => {
@@ -154,6 +209,22 @@ export class CLIManager {
 
   onExit(callback: (exitCode: number) => void): void {
     this.exitCallback = callback;
+  }
+
+  onModelChange(callback: (model: ClaudeModel) => void): void {
+    this.modelChangeCallback = callback;
+  }
+
+  /**
+   * Reset model detection state so Phase 1 starts fresh.
+   * Called before launching Claude on pool sessions to discard
+   * shell output that accumulated in the detection buffer.
+   */
+  resetDetectionState(): void {
+    this.initialDetectionBuffer = '';
+    this.initialDetectionDone = false;
+    this.switchDetectionBuffer = '';
+    this.currentModel = null;
   }
 
   write(data: string): void {

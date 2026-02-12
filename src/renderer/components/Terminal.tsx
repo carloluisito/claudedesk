@@ -5,6 +5,7 @@ import { WebLinksAddon } from 'xterm-addon-web-links';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { DragDropOverlay } from './DragDropOverlay';
 import { DragDropContextMenu } from './DragDropContextMenu';
+import { ClaudeReadinessProgress } from './ui/ClaudeReadinessProgress';
 import { FileInfo, DragDropSettings, DragDropInsertMode, PathFormat } from '../../shared/ipc-types';
 import { isClaudeReady as checkClaudeReadyPatterns, findClaudeOutputStart } from '../../shared/claude-detector';
 import 'xterm/css/xterm.css';
@@ -379,14 +380,18 @@ export function Terminal({ sessionId, isVisible, isFocused, onInput, onResize, o
     // Open terminal in container
     xterm.open(terminalRef.current);
 
-    // Allow browser-native paste (Ctrl+V / Cmd+V / Shift+Insert)
-    // Without this, xterm.js consumes Ctrl+V as raw \x16 instead of triggering a paste event
+    // Allow browser-native paste (Ctrl+V / Cmd+V / Shift+Insert) and app shortcuts
+    // Without this, xterm.js consumes these keys instead of letting the app handle them
     xterm.attachCustomKeyEventHandler((e) => {
       if (e.type === 'keydown') {
         const isPaste = (e.ctrlKey || e.metaKey) && e.key === 'v';
         const isShiftInsert = e.shiftKey && e.key === 'Insert';
-        if (isPaste || isShiftInsert) {
-          return false; // Let browser handle → fires paste event → xterm picks it up
+
+        // Allow Ctrl+Shift+M (model cycling) to pass through to app
+        const isModelCycle = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M';
+
+        if (isPaste || isShiftInsert || isModelCycle) {
+          return false; // Let browser/app handle → our window event listener picks it up
         }
       }
       return true;
@@ -435,12 +440,7 @@ export function Terminal({ sessionId, isVisible, isFocused, onInput, onResize, o
 
   return (
     <>
-      {isVisible && !isClaudeReady && (
-        <div className="terminal-loading">
-          <div className="loading-spinner" />
-          <p>Initializing Claude...</p>
-        </div>
-      )}
+      <ClaudeReadinessProgress isVisible={isVisible && !isClaudeReady} />
 
       <div
         ref={terminalRef}

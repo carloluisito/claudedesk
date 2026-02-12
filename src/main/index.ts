@@ -10,6 +10,10 @@ import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { AgentTeamManager } from './agent-team-manager';
 import { AtlasManager } from './atlas-manager';
+import { LayoutPresetsManager } from './layout-presets-manager';
+import { CommandRegistry } from './command-registry';
+import { ModelHistoryManager } from './model-history-manager';
+import { GitManager } from './git-manager';
 import { setupIPCHandlers, removeIPCHandlers } from './ipc-handlers';
 import { WindowState } from '../shared/ipc-types';
 
@@ -26,6 +30,10 @@ let historyManager: HistoryManager | null = null;
 let checkpointManager: CheckpointManager | null = null;
 let agentTeamManager: AgentTeamManager | null = null;
 let atlasManager: AtlasManager | null = null;
+let layoutPresetsManager: LayoutPresetsManager | null = null;
+let commandRegistry: CommandRegistry | null = null;
+let modelHistoryManager: ModelHistoryManager | null = null;
+let gitManager: GitManager | null = null;
 
 const CONFIG_DIR = path.join(app.getPath('home'), '.claudedesk');
 const WINDOW_STATE_FILE = path.join(CONFIG_DIR, 'window-state.json');
@@ -111,9 +119,11 @@ function createWindow(): void {
 
   // Initialize managers
   settingsManager = new SettingsManager();
+  layoutPresetsManager = new LayoutPresetsManager(settingsManager);
   templatesManager = new PromptTemplatesManager();
   historyManager = new HistoryManager();
   checkpointManager = new CheckpointManager(historyManager);
+  modelHistoryManager = new ModelHistoryManager();
 
   // Create session pool with config
   const poolSettings = settingsManager.getSessionPoolSettings();
@@ -125,6 +135,7 @@ function createWindow(): void {
 
   // Create session manager with pool reference
   sessionManager = new SessionManager(historyManager, sessionPool);
+  sessionManager.setModelHistoryManager(modelHistoryManager);
   sessionManager.initialize();
 
   // Validate split view state against current sessions
@@ -135,6 +146,13 @@ function createWindow(): void {
   // Initialize atlas manager
   atlasManager = new AtlasManager();
   atlasManager.setMainWindow(mainWindow);
+
+  // Initialize git manager
+  gitManager = new GitManager(checkpointManager);
+  gitManager.setMainWindow(mainWindow);
+
+  // Initialize command registry
+  commandRegistry = new CommandRegistry();
 
   // Initialize agent team manager
   agentTeamManager = new AgentTeamManager();
@@ -160,7 +178,11 @@ function createWindow(): void {
     checkpointManager,
     sessionPool,
     agentTeamManager,
-    atlasManager
+    atlasManager,
+    layoutPresetsManager,
+    commandRegistry,
+    modelHistoryManager,
+    gitManager
   );
 
   // Initialize pool (delayed, async)
@@ -212,6 +234,14 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     removeIPCHandlers();
+    if (modelHistoryManager) {
+      modelHistoryManager.shutdown();
+      modelHistoryManager = null;
+    }
+    if (gitManager) {
+      gitManager.destroy();
+      gitManager = null;
+    }
     if (atlasManager) {
       atlasManager.destroy();
       atlasManager = null;

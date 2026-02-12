@@ -1,114 +1,143 @@
+import { useState, useEffect } from 'react';
+import { WelcomeHero } from './WelcomeHero';
+import { QuickActionCard } from './QuickActionCard';
+import { FeatureShowcase } from './FeatureShowcase';
+import { RecentSessionsList } from './RecentSessionsList';
+
 interface EmptyStateProps {
   onCreateSession: () => void;
+  onQuickStart?: {
+    startCoding: () => void;
+    analyzeCodebase: () => void;
+    teamProject: () => void;
+  };
 }
 
-export function EmptyState({ onCreateSession }: EmptyStateProps) {
+export function EmptyState({ onCreateSession, onQuickStart }: EmptyStateProps) {
+  const [recentSessions, setRecentSessions] = useState<any[]>([]);
+  const [appVersion, setAppVersion] = useState('4.3.1');
+
+  useEffect(() => {
+    // Load app version
+    window.electronAPI.getVersionInfo?.().then((versionInfo) => {
+      if (versionInfo?.appVersion) setAppVersion(versionInfo.appVersion);
+    }).catch(() => {
+      // Fallback to default version if API not available
+    });
+
+    // Load recent sessions from history
+    window.electronAPI.listHistory?.().then((sessions) => {
+      if (sessions && sessions.length > 0) {
+        // Convert history entries to recent session format
+        const recent = sessions
+          .sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt))
+          .slice(0, 3)
+          .map((session) => ({
+            id: session.id,
+            name: session.name || 'Unnamed Session',
+            timestamp: session.lastUpdatedAt || session.createdAt,
+            directory: session.workingDirectory,
+          }));
+        setRecentSessions(recent);
+      }
+    }).catch(() => {
+      // No history available yet
+    });
+  }, []);
+
+  const handleRestoreSession = (sessionId: string) => {
+    // In future, implement session restoration from history
+    console.log('Restore session:', sessionId);
+    onCreateSession();
+  };
+
   return (
     <div className="empty-state">
-      <div className="empty-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-          <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points="13,2 13,9 20,9" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="9" y1="13" x2="15" y2="13" strokeLinecap="round" />
-          <line x1="9" y1="17" x2="15" y2="17" strokeLinecap="round" />
-        </svg>
+      <WelcomeHero version={appVersion} />
+
+      <div className="quick-actions">
+        <QuickActionCard
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="4 17 10 11 4 5" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="12" y1="19" x2="20" y2="19" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+          title="Start Coding"
+          description="Create a new session with a 2-pane split layout"
+          onClick={onQuickStart?.startCoding || onCreateSession}
+          accentColor="#7aa2f7"
+        />
+
+        <QuickActionCard
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" strokeLinecap="round" strokeLinejoin="round" />
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="12" y1="22.08" x2="12" y2="12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+          title="Analyze Codebase"
+          description="Start a session and open the Repository Atlas"
+          onClick={onQuickStart?.analyzeCodebase || onCreateSession}
+          accentColor="#9ece6a"
+        />
+
+        <QuickActionCard
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="6" cy="6" r="2" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="18" cy="6" r="2" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="6" cy="18" r="2" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="18" cy="18" r="2" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="8" y1="6" x2="10" y2="10" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="16" y1="6" x2="14" y2="10" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="8" y1="18" x2="10" y2="14" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="16" y1="18" x2="14" y2="14" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+          title="Team Project"
+          description="Start a session and open the Agent Teams panel"
+          onClick={onQuickStart?.teamProject || onCreateSession}
+          accentColor="#ff9e64"
+        />
       </div>
 
-      <h2 className="empty-title">No Active Sessions</h2>
-      <p className="empty-description">
-        Start a new Claude Code session to begin coding with AI assistance.
-      </p>
+      <FeatureShowcase />
 
-      <button className="create-btn" onClick={onCreateSession}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M8 2v12M2 8h12" strokeLinecap="round" />
-        </svg>
-        New Session
-        <span className="shortcut">Ctrl+T</span>
-      </button>
+      {recentSessions.length > 0 && (
+        <RecentSessionsList
+          sessions={recentSessions}
+          onSelectSession={handleRestoreSession}
+        />
+      )}
 
       <style>{`
         .empty-state {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
-          height: 100%;
-          padding: 48px;
+          justify-content: flex-start;
+          min-height: 100%;
+          padding: 64px 48px 128px;
           font-family: 'JetBrains Mono', monospace;
           text-align: center;
           animation: fade-in 0.3s ease;
         }
 
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
-        .empty-icon {
-          width: 80px;
-          height: 80px;
+        .quick-actions {
           display: flex;
-          align-items: center;
+          gap: 20px;
           justify-content: center;
-          background: linear-gradient(135deg, rgba(122, 162, 247, 0.1), rgba(125, 207, 255, 0.05));
-          border: 1px solid #292e42;
-          border-radius: 20px;
-          margin-bottom: 24px;
-          color: #565f89;
-        }
-
-        .empty-title {
-          font-size: 16px;
-          font-weight: 600;
-          color: #a9b1d6;
-          margin: 0 0 8px 0;
-        }
-
-        .empty-description {
-          font-size: 13px;
-          color: #565f89;
-          margin: 0 0 32px 0;
-          max-width: 320px;
-          line-height: 1.5;
-        }
-
-        .create-btn {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          height: 44px;
-          padding: 0 24px;
-          background: linear-gradient(135deg, #7aa2f7, #7dcfff);
-          border: none;
-          border-radius: 10px;
-          color: #1a1b26;
-          font-size: 13px;
-          font-weight: 600;
-          font-family: inherit;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          box-shadow: 0 4px 16px rgba(122, 162, 247, 0.2);
-        }
-
-        .create-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(122, 162, 247, 0.3);
-        }
-
-        .create-btn:active {
-          transform: translateY(0);
-        }
-
-        .create-btn svg {
-          opacity: 0.8;
-        }
-
-        .shortcut {
-          font-size: 11px;
-          font-weight: 500;
-          opacity: 0.6;
-          margin-left: 4px;
+          flex-wrap: wrap;
+          margin-bottom: 32px;
+          max-width: 920px;
         }
       `}</style>
     </div>

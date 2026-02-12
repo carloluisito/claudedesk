@@ -10,6 +10,10 @@ import { HistoryManager } from './history-manager';
 import { CheckpointManager } from './checkpoint-manager';
 import { AgentTeamManager } from './agent-team-manager';
 import { AtlasManager } from './atlas-manager';
+import { LayoutPresetsManager } from './layout-presets-manager';
+import { CommandRegistry } from './command-registry';
+import { ModelHistoryManager } from './model-history-manager';
+import { GitManager } from './git-manager';
 import { queryClaudeQuota, clearQuotaCache, getBurnRate } from './quota-service';
 import { getFileInfo, readFileContent } from './file-dragdrop-handler';
 import { IPCRegistry } from './ipc-registry';
@@ -25,7 +29,11 @@ export function setupIPCHandlers(
   checkpointManager: CheckpointManager,
   sessionPool: SessionPool,
   agentTeamManager: AgentTeamManager,
-  atlasManager: AtlasManager
+  atlasManager: AtlasManager,
+  layoutPresetsManager: LayoutPresetsManager,
+  commandRegistry: CommandRegistry,
+  modelHistoryManager: ModelHistoryManager,
+  gitManager: GitManager
 ): void {
   // Connect managers to window
   sessionManager.setMainWindow(mainWindow);
@@ -36,7 +44,10 @@ export function setupIPCHandlers(
   // ── Session management (invoke) ──
 
   registry.handle('createSession', async (_e, request) => {
-    try { return await sessionManager.createSession(request); }
+    try {
+      const result = await sessionManager.createSession(request);
+      return result;
+    }
     catch (err) { console.error('Failed to create session:', err); throw err; }
   });
 
@@ -49,7 +60,10 @@ export function setupIPCHandlers(
   });
 
   registry.handle('renameSession', async (_e, sessionId, newName) => {
-    try { return await sessionManager.renameSession(sessionId, newName); }
+    try {
+      const result = await sessionManager.renameSession(sessionId, newName);
+      return result;
+    }
     catch (err) { console.error('Failed to rename session:', err); throw err; }
   });
 
@@ -63,6 +77,59 @@ export function setupIPCHandlers(
 
   registry.handle('getActiveSession', async () => {
     return sessionManager.getActiveSessionId();
+  });
+
+  // ── Model switching ──
+
+  registry.handle('switchModel', async (_e, sessionId, model) => {
+    const session = sessionManager.getSession(sessionId);
+    console.log('[switchModel] Called with:', { sessionId, model, sessionStatus: session?.status });
+    if (!session) {
+      console.log('[switchModel] Session not found');
+      return false;
+    }
+    if (session.status === 'exited' || session.status === 'error') {
+      console.log('[switchModel] Session not active:', session.status);
+      return false;
+    }
+
+    const VALID_MODELS = ['opus', 'sonnet', 'haiku'];
+    if (!VALID_MODELS.includes(model)) {
+      console.log('[switchModel] Unknown model:', model);
+      return false;
+    }
+
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Use direct command syntax: /model haiku, /model sonnet, /model opus
+    // Type character-by-character to avoid autocomplete interference
+    const command = `/model ${model}`;
+    console.log('[switchModel] Typing command:', command);
+
+    for (const char of command) {
+      sessionManager.sendInput(sessionId, char);
+      await delay(50);
+    }
+
+    // Wait for autocomplete to settle
+    await delay(300);
+
+    // Press Enter to execute
+    sessionManager.sendInput(sessionId, '\r');
+    console.log('[switchModel] Command sent');
+
+    return true;
+  });
+
+  // ── Model History ──
+
+  registry.handle('getModelHistory', async (_e, sessionId) => {
+    return modelHistoryManager.getHistory(sessionId);
+  });
+
+  registry.handle('clearModelHistory', async (_e, sessionId) => {
+    modelHistoryManager.clearHistory(sessionId);
+    return true;
   });
 
   // ── Dialogs ──
@@ -187,6 +254,35 @@ export function setupIPCHandlers(
   registry.handle('deleteTemplate', async (_e, id) => {
     try { return templatesManager.deleteTemplate(id); }
     catch (err) { console.error('Failed to delete template:', err); throw err; }
+  });
+
+  // ── Commands ──
+
+  registry.handle('searchCommands', async (_e, query, maxResults = 10) => {
+    try { return commandRegistry.search(query, maxResults); }
+    catch (err) { console.error('Failed to search commands:', err); throw err; }
+  });
+
+  registry.handle('getAllCommands', async () => {
+    try { return commandRegistry.getAllCommands(); }
+    catch (err) { console.error('Failed to get all commands:', err); throw err; }
+  });
+
+  registry.handle('executeCommand', async (_e, commandId, args) => {
+    try {
+      const command = commandRegistry.getCommand(commandId);
+      if (!command) {
+        console.error('Command not found:', commandId);
+        return false;
+      }
+
+      // Execute command action
+      // For now, commands with UI actions will be handled by the renderer
+      // This is a placeholder for future server-side command execution
+      console.log('Executing command:', commandId, args);
+      return true;
+    }
+    catch (err) { console.error('Failed to execute command:', err); return false; }
   });
 
   // ── Drag-Drop ──
@@ -319,6 +415,20 @@ export function setupIPCHandlers(
     } catch (err) { console.error('Failed to update auto-layout setting:', err); return false; }
   });
 
+  registry.handle('updateUIMode', async (_e, mode) => {
+    try {
+      settingsManager.updateUIMode(mode);
+      return true;
+    } catch (err) { console.error('Failed to update UI mode:', err); return false; }
+  });
+
+  registry.handle('updateDefaultModel', async (_e, model) => {
+    try {
+      settingsManager.updateDefaultModel(model);
+      return true;
+    } catch (err) { console.error('Failed to update default model:', err); return false; }
+  });
+
   // ── Repository Atlas ──
 
   registry.handle('generateAtlas', async (_e, request) => {
@@ -341,6 +451,188 @@ export function setupIPCHandlers(
   registry.handle('updateAtlasSettings', async (_e, settings) => {
     try { return settingsManager.updateAtlasSettings(settings); }
     catch (err) { console.error('Failed to update atlas settings:', err); throw err; }
+  });
+
+  // ── Layout Presets ──
+
+  registry.handle('getLayoutPresets', async () => {
+    return layoutPresetsManager.getPresets();
+  });
+
+  registry.handle('applyLayoutPreset', async (_e, presetId) => {
+    try {
+      const preset = layoutPresetsManager.getPresetById(presetId);
+      if (!preset) {
+        console.error('Preset not found:', presetId);
+        return false;
+      }
+
+      // Validate the preset structure
+      if (!layoutPresetsManager.validateLayout(preset.structure)) {
+        console.error('Invalid preset structure:', presetId);
+        return false;
+      }
+
+      // Update split view state with preset layout
+      settingsManager.updateSplitViewState({
+        layout: preset.structure,
+        focusedPaneId: '', // Will be set by renderer
+      });
+
+      // Save the last used preset ID
+      layoutPresetsManager.saveLastUsedPreset(presetId);
+
+      return true;
+    } catch (err) {
+      console.error('Failed to apply layout preset:', err);
+      return false;
+    }
+  });
+
+  registry.handle('applyCustomLayout', async (_e, rows, cols) => {
+    try {
+      const customLayout = layoutPresetsManager.createCustomGridLayout(rows, cols);
+
+      // Validate the generated layout
+      if (!layoutPresetsManager.validateLayout(customLayout)) {
+        console.error('Invalid custom layout generated');
+        return false;
+      }
+
+      // Update split view state
+      settingsManager.updateSplitViewState({
+        layout: customLayout,
+        focusedPaneId: '', // Will be set by renderer
+      });
+
+      // Save as custom preset
+      layoutPresetsManager.saveLastUsedPreset('custom');
+
+      return true;
+    } catch (err) {
+      console.error('Failed to apply custom layout:', err);
+      return false;
+    }
+  });
+
+  registry.handle('getCurrentLayout', async () => {
+    const settings = settingsManager.getSettings();
+    if (settings.splitViewState) {
+      return settings.splitViewState.layout;
+    }
+    // Return default single pane layout
+    const { v4: uuidv4 } = require('uuid');
+    const defaultLayout: import('../shared/ipc-types').LayoutLeaf = {
+      type: 'leaf',
+      paneId: uuidv4(),
+      sessionId: null,
+    };
+    return defaultLayout;
+  });
+
+  // ── Git Integration ──
+
+  registry.handle('getGitStatus', async (_e, workDir) => {
+    try { return await gitManager.getStatus(workDir); }
+    catch (err) { console.error('Failed to get git status:', err); throw err; }
+  });
+
+  registry.handle('getGitBranches', async (_e, workDir) => {
+    try { return await gitManager.getBranches(workDir); }
+    catch (err) { console.error('Failed to get git branches:', err); throw err; }
+  });
+
+  registry.handle('gitStageFiles', async (_e, workDir, files) => {
+    try { return await gitManager.stageFiles(workDir, files); }
+    catch (err) { console.error('Failed to stage files:', err); throw err; }
+  });
+
+  registry.handle('gitUnstageFiles', async (_e, workDir, files) => {
+    try { return await gitManager.unstageFiles(workDir, files); }
+    catch (err) { console.error('Failed to unstage files:', err); throw err; }
+  });
+
+  registry.handle('gitStageAll', async (_e, workDir) => {
+    try { return await gitManager.stageAll(workDir); }
+    catch (err) { console.error('Failed to stage all:', err); throw err; }
+  });
+
+  registry.handle('gitUnstageAll', async (_e, workDir) => {
+    try { return await gitManager.unstageAll(workDir); }
+    catch (err) { console.error('Failed to unstage all:', err); throw err; }
+  });
+
+  registry.handle('gitCommit', async (_e, request) => {
+    try { return await gitManager.commit(request); }
+    catch (err) { console.error('Failed to commit:', err); throw err; }
+  });
+
+  registry.handle('gitGenerateMessage', async (_e, workDir) => {
+    try { return await gitManager.generateMessage(workDir); }
+    catch (err) { console.error('Failed to generate commit message:', err); throw err; }
+  });
+
+  registry.handle('gitPush', async (_e, workDir, setUpstream) => {
+    try { return await gitManager.push(workDir, setUpstream); }
+    catch (err) { console.error('Failed to push:', err); throw err; }
+  });
+
+  registry.handle('gitPull', async (_e, workDir) => {
+    try { return await gitManager.pull(workDir); }
+    catch (err) { console.error('Failed to pull:', err); throw err; }
+  });
+
+  registry.handle('gitFetch', async (_e, workDir) => {
+    try { return await gitManager.fetch(workDir); }
+    catch (err) { console.error('Failed to fetch:', err); throw err; }
+  });
+
+  registry.handle('gitSwitchBranch', async (_e, workDir, branch) => {
+    try { return await gitManager.switchBranch(workDir, branch); }
+    catch (err) { console.error('Failed to switch branch:', err); throw err; }
+  });
+
+  registry.handle('gitCreateBranch', async (_e, workDir, branch) => {
+    try { return await gitManager.createBranch(workDir, branch); }
+    catch (err) { console.error('Failed to create branch:', err); throw err; }
+  });
+
+  registry.handle('gitLog', async (_e, workDir, count) => {
+    try { return await gitManager.log(workDir, count); }
+    catch (err) { console.error('Failed to get git log:', err); throw err; }
+  });
+
+  registry.handle('gitDiff', async (_e, workDir, filePath, staged) => {
+    try { return await gitManager.diff(workDir, filePath, staged); }
+    catch (err) { console.error('Failed to get diff:', err); throw err; }
+  });
+
+  registry.handle('gitCommitDiff', async (_e, workDir, hash) => {
+    try { return await gitManager.commitDiff(workDir, hash); }
+    catch (err) { console.error('Failed to get commit diff:', err); throw err; }
+  });
+
+  registry.handle('gitDiscardFile', async (_e, workDir, filePath) => {
+    try { return await gitManager.discardFile(workDir, filePath); }
+    catch (err) { console.error('Failed to discard file:', err); throw err; }
+  });
+
+  registry.handle('gitDiscardAll', async (_e, workDir) => {
+    try { return await gitManager.discardAll(workDir); }
+    catch (err) { console.error('Failed to discard all:', err); throw err; }
+  });
+
+  registry.handle('gitInit', async (_e, workDir) => {
+    try { return await gitManager.init(workDir); }
+    catch (err) { console.error('Failed to init git:', err); throw err; }
+  });
+
+  registry.handle('gitStartWatching', async (_e, workDir) => {
+    return gitManager.startWatching(workDir);
+  });
+
+  registry.handle('gitStopWatching', async (_e, workDir) => {
+    return gitManager.stopWatching(workDir);
   });
 
   // ── App info ──

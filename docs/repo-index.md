@@ -1,6 +1,6 @@
 # ClaudeDesk — Repository Index
 
-79 source files | ~22,450 LOC | 11 domains | 80 IPC methods
+114 source files | ~30,200 LOC | 12 domains | 102 IPC methods | 233 tests (v4.4.0)
 
 ## Entrypoints
 
@@ -8,15 +8,15 @@
 |------|------|
 | `src/main/index.ts` (262 lines) | Main process — creates window, initializes all 8 managers, wires IPC |
 | `src/renderer/App.tsx` (880 lines) | Root React component — composes all hooks, panels, and dialogs |
-| `src/shared/ipc-contract.ts` (478 lines) | IPC single source of truth — 80 methods, auto-derives preload bridge and types |
+| `src/shared/ipc-contract.ts` (~550 lines) | IPC single source of truth — 102 methods, auto-derives preload bridge and types |
 
 ## IPC Infrastructure (cross-cutting)
 
 | File | Layer | Role | Lines |
 |------|-------|------|-------|
-| `src/shared/ipc-contract.ts` | Shared | Contract map: channel names, arg types, return types | 478 |
-| `src/shared/ipc-types.ts` | Shared | All IPC payload/response types | 325 |
-| `src/main/ipc-handlers.ts` | Main | Handler implementations for all 80 methods | 386 |
+| `src/shared/ipc-contract.ts` | Shared | Contract map: channel names, arg types, return types | 528 |
+| `src/shared/ipc-types.ts` | Shared | All IPC payload/response types | 355 |
+| `src/main/ipc-handlers.ts` | Main | Handler implementations for all 102 methods | ~450 |
 | `src/main/ipc-registry.ts` | Main | Typed `handle()` / `on()` wrappers for `ipcMain` | 72 |
 | `src/main/ipc-emitter.ts` | Main | Typed `emit()` wrapper for `webContents.send()` | 28 |
 | `src/preload/index.ts` | Preload | Auto-derived context bridge from contract | 54 |
@@ -25,8 +25,9 @@
 
 | File | Layer | Role | Lines |
 |------|-------|------|-------|
-| `src/main/session-manager.ts` | Main | Session CRUD, lifecycle, team metadata | 419 |
-| `src/main/cli-manager.ts` | Main | PTY spawning, output buffering | 227 |
+| `src/main/session-manager.ts` | Main | Session CRUD, lifecycle, team metadata, model change events | 440 |
+| `src/main/cli-manager.ts` | Main | PTY spawning, output buffering, model detection | 253 |
+| `src/shared/model-detector.ts` | Shared | Parse terminal output to detect model switches | 80 |
 | `src/main/session-pool.ts` | Main | Pre-warmed shell pool for fast session creation | 277 |
 | `src/main/session-persistence.ts` | Main | Session state save/load (JSON) | 93 |
 | `src/renderer/hooks/useSessionManager.ts` | Renderer | Session CRUD hook, IPC event listeners | 199 |
@@ -38,6 +39,7 @@
 |------|-------|------|-------|
 | `src/main/settings-persistence.ts` | Main | Split view state persistence (also workspaces, pool, atlas) | 422 |
 | `src/renderer/hooks/useSplitView.ts` | Renderer | Tree-based layout state, split/close/assign/focus | 464 |
+| `src/renderer/utils/layout-tree.ts` | Renderer | Pure tree functions extracted from useSplitView (countPanes, traverseTree, etc.) | 175 |
 | `src/renderer/components/SplitLayout.tsx` | Renderer | Recursive tree renderer with drag-to-resize | 215 |
 | `src/renderer/components/PaneHeader.tsx` | Renderer | Per-pane header with session picker and split controls | 251 |
 | `src/renderer/components/PaneSessionPicker.tsx` | Renderer | Session assignment UI for empty panes | 206 |
@@ -96,6 +98,9 @@
 | `src/renderer/hooks/useQuota.ts` | Renderer | Quota + burn rate polling | 84 |
 | `src/renderer/components/ui/BudgetPanel.tsx` | UI | Quota visualization panel | 1087 |
 | `src/renderer/components/ui/BudgetSettings.tsx` | UI | Budget configuration | 1181 |
+| `src/renderer/components/ui/FuelStatusIndicator.tsx` | UI | Always-visible fuel gauge in TabBar | 200 |
+| `src/renderer/components/ui/FuelGaugeBar.tsx` | UI | 5-segment horizontal gauge visualization | 60 |
+| `src/renderer/components/ui/FuelTooltip.tsx` | UI | Hover tooltip with quota breakdown | 150 |
 
 ## Drag-Drop
 
@@ -113,7 +118,9 @@
 | File | Layer | Role | Lines |
 |------|-------|------|-------|
 | `src/renderer/components/ui/TabBar.tsx` | UI | Session tabs, toolbar buttons | 705 |
-| `src/renderer/components/ui/Tab.tsx` | UI | Individual tab with close/rename | 430 |
+| `src/renderer/components/ui/Tab.tsx` | UI | Individual tab with close/rename | 438 |
+| `src/renderer/components/ui/ModelBadge.tsx` | UI | Dynamic badge showing current model | 70 |
+| `src/renderer/components/ui/ModelSwitcher.tsx` | UI | Dropdown for mid-session model switching | 167 |
 | `src/renderer/components/ui/ConfirmDialog.tsx` | UI | Reusable confirmation modal | 219 |
 | `src/renderer/components/ui/ContextMenu.tsx` | UI | Right-click context menu | 205 |
 | `src/renderer/components/ui/EmptyState.tsx` | UI | No-sessions welcome screen | 116 |
@@ -136,6 +143,18 @@ IPC: `atlas:*`
 | `src/renderer/components/AtlasPanel.css` | Renderer | Atlas panel styles | 473 |
 | `src/shared/types/atlas-types.ts` | Shared | Atlas type definitions | 148 |
 
+## Git Integration
+
+IPC: `git:*` (21 methods — 19 invoke + 2 events)
+
+| File | Layer | Role | Lines |
+|------|-------|------|-------|
+| `src/main/git-manager.ts` | Main | Git command execution, status parsing, AI commit messages, file watching | ~580 |
+| `src/shared/types/git-types.ts` | Shared | Git type definitions (status, branches, commits, diffs, operations) | ~120 |
+| `src/renderer/hooks/useGit.ts` | Renderer | Git state management and IPC calls | ~395 |
+| `src/renderer/components/GitPanel.tsx` | Renderer | Git panel: branch bar, file staging, inline diff, commit history | ~1000 |
+| `src/renderer/components/ui/CommitDialog.tsx` | UI | Commit message editor with AI generation | ~465 |
+
 ## Shared Utilities
 
 | File | Layer | Role | Lines |
@@ -148,3 +167,59 @@ IPC: `atlas:*`
 | `src/renderer/styles/globals.css` | Renderer | Global styles and Tailwind imports | 244 |
 | `src/renderer/main.tsx` | Renderer | React DOM entry point | 10 |
 | `src/renderer/hooks/index.ts` | Renderer | Hooks barrel export | 3 |
+
+## Testing Infrastructure (v4.4.0)
+
+233 tests | 18 test files | Vitest 4 + @testing-library/react + Playwright
+
+### Config & Setup
+
+| File | Role | Lines |
+|------|------|-------|
+| `vitest.workspace.ts` | 3 workspace projects (shared/main/renderer) | ~35 |
+| `playwright.config.ts` | Playwright config for Electron E2E | ~15 |
+| `test/setup-main.ts` | Electron + node-pty mocks for main process tests | ~60 |
+| `test/setup-renderer.ts` | jest-dom + electronAPI reset for renderer tests | ~5 |
+| `test/helpers/electron-api-mock.ts` | Auto-derived electronAPI mock from IPC contract | ~60 |
+
+### Unit Tests (Phase 1 — pure functions)
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `src/shared/model-detector.test.ts` | 15 | Initial/switch detection, ANSI stripping |
+| `src/shared/message-parser.test.ts` | 10 | 4 message formats, dedup, ANSI stripping |
+| `src/renderer/utils/variable-resolver.test.ts` | 18 | resolveVariables, extractVariables, getMissingVariables |
+| `src/renderer/utils/fuzzy-search.test.ts` | 14 | Score tiers, sorting, minScore, highlightMatches |
+| `src/main/git-manager.test.ts` | 41 | Status parsing, branches, commit, generateMessage, detectErrorCode |
+| `src/renderer/utils/layout-tree.test.ts` | 33 | countPanes, traverseTree, transformTree, pruneTree, grid nodes |
+
+### Integration Tests (Phase 2 — mocked dependencies)
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `src/renderer/hooks/useGit.test.ts` | 8 | Status loading, staging, commit, operationInProgress |
+| `src/renderer/hooks/useSessionManager.test.ts` | 6 | CRUD, events, output subscribers |
+| `src/renderer/hooks/useSplitView.test.ts` | 9 | Layout ops, persistence, focus navigation |
+| `src/main/session-persistence.test.ts` | 16 | Load/save/clear, validation, atomic write |
+| `src/main/ipc-registry.test.ts` | 5 | handle(), on(), removeAll() |
+| `src/main/ipc-emitter.test.ts` | 3 | emit(), destroyed window guard |
+
+### Component Tests (Phase 3 — mocked hooks)
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `src/renderer/components/ui/TabBar.test.tsx` | 8 | Tabs render, active state, callbacks |
+| `src/renderer/components/ui/EmptyState.test.tsx` | 5 | Welcome screen, quick actions |
+| `src/renderer/components/ui/CommitDialog.test.tsx` | 11 | Form, validation, commit flow, generate |
+| `src/renderer/components/PaneHeader.test.tsx` | 10 | Name, split/close buttons, dropdown |
+| `src/renderer/components/GitPanel.test.tsx` | 13 | File sections, branch, init, status |
+| `src/renderer/components/SplitLayout.test.tsx` | 8 | Single/split/grid render, depth guard |
+
+### E2E Tests (Phase 4 — Playwright for Electron)
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `e2e/app-launch.spec.ts` | 4 | Window, title, dimensions, content |
+| `e2e/session.spec.ts` | 3 | New session button, dialog |
+| `e2e/split-view.spec.ts` | 2 | Single pane default |
+| `e2e/keyboard-shortcuts.spec.ts` | 3 | Ctrl+T, Escape, settings |

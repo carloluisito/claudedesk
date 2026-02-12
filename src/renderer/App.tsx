@@ -20,13 +20,20 @@ import { TitleBarBranding } from './components/TitleBarBranding';
 import { AboutDialog } from './components/AboutDialog';
 import { TeamPanel } from './components/TeamPanel';
 import { AtlasPanel } from './components/AtlasPanel';
+import { GitPanel } from './components/GitPanel';
+import { LayoutPicker } from './components/LayoutPicker';
+import { WelcomeWizard } from './components/WelcomeWizard';
+import { ShortcutsPanel } from './components/ui/ShortcutsPanel';
+import { ModelHistoryPanel } from './components/ModelHistoryPanel';
 import { useSessionManager } from './hooks/useSessionManager';
 import { useQuota } from './hooks/useQuota';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useSplitView } from './hooks/useSplitView';
 import { useAgentTeams } from './hooks/useAgentTeams';
 import { useAtlas } from './hooks/useAtlas';
+import { useGit } from './hooks/useGit';
 import { useAutoTeamLayout } from './hooks/useAutoTeamLayout';
+import { useLayoutPicker } from './hooks/useLayoutPicker';
 import { Workspace, PermissionMode, WorkspaceValidationResult } from '../shared/ipc-types';
 import { PromptTemplate } from '../shared/types/prompt-templates';
 import { resolveVariables, readClipboard, getMissingVariables } from './utils/variable-resolver';
@@ -60,8 +67,17 @@ function App() {
     focusPane,
     focusDirection,
     setRatio,
-    collapseSplitView,
+    applyLayoutPreset,
+    createCustomLayout,
   } = useSplitView();
+
+  // Layout picker
+  const layoutPicker = useLayoutPicker((preset) => {
+    showToast(`Applied ${preset.name}`, 'success');
+  });
+  const [showWizard, setShowWizard] = useState(false);
+  const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
+  const [showModelHistoryPanel, setShowModelHistoryPanel] = useState(false);
 
   // Agent Teams
   const { teams, closeTeam } = useAgentTeams();
@@ -84,6 +100,10 @@ function App() {
   const atlas = useAtlas(atlasProjectPath);
   const [showAtlasPanel, setShowAtlasPanel] = useState(false);
 
+  // Git Integration
+  const git = useGit(atlasProjectPath);
+  const [showGitPanel, setShowGitPanel] = useState(false);
+
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showBudgetPanel, setShowBudgetPanel] = useState(false);
@@ -100,6 +120,15 @@ function App() {
     onClose: () => {},
   });
 
+  // Panel open/close helpers
+  const openPanel = useCallback((_panelType: string, setter: (value: boolean) => void) => {
+    setter(true);
+  }, []);
+
+  const closePanel = useCallback((_panelType: string, setter: (value: boolean) => void) => {
+    setter(false);
+  }, []);
+
   // Budget/quota state from real API
   const { quota: quotaData, burnRate: burnRateData, isLoading: isQuotaLoading, refresh: refreshQuota } = useQuota();
 
@@ -114,6 +143,14 @@ function App() {
       }
     };
     loadWorkspaces();
+  }, []);
+
+  // Check if wizard should be shown
+  useEffect(() => {
+    const wizardCompleted = localStorage.getItem('wizardCompleted') === 'true';
+    if (!wizardCompleted) {
+      setShowWizard(true);
+    }
   }, []);
 
   // Workspace management callbacks
@@ -200,6 +237,8 @@ function App() {
       } else if (node.type === 'branch') {
         findSessionInPane(node.children[0]);
         findSessionInPane(node.children[1]);
+      } else if (node.type === 'grid') {
+        node.children.forEach((child: any) => findSessionInPane(child));
       }
     }
     findSessionInPane(layout);
@@ -237,6 +276,12 @@ function App() {
           if (node.type === 'branch') {
             return findPaneId(node.children[0]) || findPaneId(node.children[1]);
           }
+          if (node.type === 'grid') {
+            for (const child of node.children) {
+              const result = findPaneId(child);
+              if (result) return result;
+            }
+          }
           return null;
         }
 
@@ -266,6 +311,12 @@ function App() {
       if (node.type === 'branch') {
         return findEmptyPane(node.children[0]) || findEmptyPane(node.children[1]);
       }
+      if (node.type === 'grid') {
+        for (const child of node.children) {
+          const result = findEmptyPane(child);
+          if (result) return result;
+        }
+      }
       return null;
     }
 
@@ -294,10 +345,24 @@ function App() {
         return;
       }
 
+      // Ctrl/Cmd + Shift + L: Layout Picker
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        layoutPicker.openPicker();
+        return;
+      }
+
+      // Ctrl/Cmd + Shift + G: Git panel
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
+        e.preventDefault();
+        setShowGitPanel(prev => !prev);
+        return;
+      }
+
       // Ctrl/Cmd + Shift + H: History panel
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H') {
         e.preventDefault();
-        setShowHistoryPanel(true);
+        openPanel('history', setShowHistoryPanel);
         return;
       }
 
@@ -402,7 +467,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, activeSessionId, switchSession, commandPalette, isSplitActive, paneCount, focusedPaneId, splitPane, closePane, focusDirection]);
+  }, [sessions, activeSessionId, switchSession, commandPalette, layoutPicker, isSplitActive, paneCount, focusedPaneId, splitPane, closePane, focusDirection, layout]);
 
   const handleCreateSession = useCallback(async (
     name: string,
@@ -480,28 +545,6 @@ function App() {
     }
   }, [sessions, createSession]);
 
-  const handleToggleSplit = useCallback(() => {
-    try {
-      if (isSplitActive) {
-        // Collapse to single pane
-        collapseSplitView();
-      } else {
-        // Split the focused pane horizontally
-        if (!focusedPaneId) {
-          console.error('Cannot split: no focused pane ID');
-          return;
-        }
-        if (paneCount >= 4) {
-          console.warn('Cannot split: maximum of 4 panes reached');
-          return;
-        }
-        splitPane(focusedPaneId, 'horizontal');
-      }
-    } catch (err) {
-      console.error('Error toggling split view:', err);
-    }
-  }, [isSplitActive, collapseSplitView, focusedPaneId, paneCount, splitPane]);
-
   const handleFocusPaneWithSession = useCallback((sessionId: string) => {
     // Find the pane containing this session and focus it
     function findPaneIdForSession(node: any): string | null {
@@ -512,6 +555,12 @@ function App() {
         const leftResult = findPaneIdForSession(node.children[0]);
         if (leftResult) return leftResult;
         return findPaneIdForSession(node.children[1]);
+      }
+      if (node.type === 'grid') {
+        for (const child of node.children) {
+          const result = findPaneIdForSession(child);
+          if (result) return result;
+        }
       }
       return null;
     }
@@ -528,6 +577,62 @@ function App() {
     }
   }, [focusedPaneId, assignSession]);
 
+  // Quick action handlers for enhanced empty state
+  const handleQuickStartCoding = useCallback(async () => {
+    // Create new session
+    await createSession('New Session', '.', 'standard');
+    // Apply 2-pane horizontal layout
+    const preset = layoutPicker.presets?.find(p => p.id === 'horizontal-split');
+    if (preset) {
+      applyLayoutPreset(preset);
+    }
+  }, [createSession, applyLayoutPreset, layoutPicker.presets]);
+
+  const handleQuickAnalyzeCodebase = useCallback(async () => {
+    // Create new session and open Atlas
+    await createSession('Analysis Session', '.', 'standard');
+    openPanel('atlas', setShowAtlasPanel);
+  }, [createSession, openPanel]);
+
+  const handleQuickTeamProject = useCallback(async () => {
+    // Create new session and open Teams panel
+    await createSession('Team Session', '.', 'standard');
+    openPanel('teams', setShowTeamPanel);
+  }, [createSession, openPanel]);
+
+  // Welcome wizard handlers
+  const handleWizardComplete = useCallback(async () => {
+    try {
+      localStorage.setItem('wizardCompleted', 'true');
+      setShowWizard(false);
+      // Create first session
+      await createSession('Session 1', '.', 'standard');
+    } catch (err) {
+      console.error('Failed to complete wizard:', err);
+    }
+  }, [createSession]);
+
+  const handleWizardTryFeature = useCallback(async (featureId: string) => {
+    // Create a session first
+    await createSession('Session 1', '.', 'standard');
+
+    // Open the requested feature panel
+    switch (featureId) {
+      case 'atlas':
+        openPanel('atlas', setShowAtlasPanel);
+        break;
+      case 'teams':
+        openPanel('teams', setShowTeamPanel);
+        break;
+      case 'checkpoints':
+        openPanel('checkpoints', setShowCheckpointPanel);
+        break;
+      case 'templates':
+        commandPalette.open();
+        break;
+    }
+  }, [createSession, commandPalette, openPanel]);
+
   const handleSplitSession = useCallback((sessionId: string, direction: 'horizontal' | 'vertical') => {
     // Find the pane containing this session
     function findPaneIdForSession(node: any): string | null {
@@ -539,16 +644,23 @@ function App() {
         if (leftResult) return leftResult;
         return findPaneIdForSession(node.children[1]);
       }
+      if (node.type === 'grid') {
+        for (const child of node.children) {
+          const result = findPaneIdForSession(child);
+          if (result) return result;
+        }
+      }
       return null;
     }
 
     const paneId = findPaneIdForSession(layout);
-    if (paneId && paneCount < 4) {
+    if (paneId) {
+      // No longer check pane count limit (unlimited panes)
       const newPaneId = splitPane(paneId, direction);
       // Assign the same session to the new pane
       assignSession(newPaneId, sessionId);
     }
-  }, [layout, paneCount, splitPane, assignSession]);
+  }, [layout, splitPane, assignSession]);
 
   // Convert sessions to TabData format
   const tabData: TabData[] = sessions;
@@ -593,16 +705,22 @@ function App() {
         isDialogOpen={showNewSessionDialog}
         onDialogOpenChange={setShowNewSessionDialog}
         workspaces={workspaces}
-        onOpenAtlas={() => setShowAtlasPanel(true)}
-        onOpenTeams={() => setShowTeamPanel(true)}
+        onOpenAtlas={() => openPanel('atlas', setShowAtlasPanel)}
+        onOpenLayoutPicker={() => layoutPicker.openPicker()}
+        onOpenTeams={() => openPanel('teams', setShowTeamPanel)}
+        onOpenGit={() => openPanel('git', setShowGitPanel)}
         teamCount={teams.length}
-        onOpenSettings={() => setShowSettingsDialog(true)}
-        onOpenBudget={() => setShowBudgetPanel(true)}
-        onOpenHistory={() => setShowHistoryPanel(true)}
-        onOpenCheckpoints={() => setShowCheckpointPanel(true)}
+        gitStagedCount={git.status?.stagedCount ?? 0}
+        quotaData={quotaData}
+        burnRateData={burnRateData}
+        isQuotaLoading={isQuotaLoading}
+        quotaError={null}
+        onOpenSettings={() => openPanel('settings', setShowSettingsDialog)}
+        onOpenBudget={() => openPanel('budget', setShowBudgetPanel)}
+        onOpenHistory={() => openPanel('history', setShowHistoryPanel)}
+        onOpenCheckpoints={() => openPanel('checkpoints', setShowCheckpointPanel)}
         onCreateCheckpoint={() => setShowCheckpointDialog(true)}
-        isSplitActive={isSplitActive}
-        onToggleSplit={handleToggleSplit}
+        onOpenHelp={() => setShowShortcutsPanel(true)}
         visibleSessionIds={visibleSessionIds}
         focusedSessionId={activeSessionId}
         onFocusPaneWithSession={handleFocusPaneWithSession}
@@ -614,7 +732,14 @@ function App() {
       {/* Terminal area */}
       <div className="terminal-container">
         {sessions.length === 0 ? (
-          <EmptyState onCreateSession={() => setShowNewSessionDialog(true)} />
+          <EmptyState
+            onCreateSession={() => setShowNewSessionDialog(true)}
+            onQuickStart={{
+              startCoding: handleQuickStartCoding,
+              analyzeCodebase: handleQuickAnalyzeCodebase,
+              teamProject: handleQuickTeamProject,
+            }}
+          />
         ) : isSplitActive ? (
           <>
             {/* Only render split layout if we have valid layout and focused pane */}
@@ -716,7 +841,7 @@ function App() {
       {/* Atlas panel */}
       <AtlasPanel
         isOpen={showAtlasPanel}
-        onClose={() => setShowAtlasPanel(false)}
+        onClose={() => closePanel('atlas', setShowAtlasPanel)}
         projectPath={atlasProjectPath}
         isScanning={atlas.isScanning}
         scanProgress={atlas.scanProgress}
@@ -732,10 +857,18 @@ function App() {
         onReset={atlas.reset}
       />
 
+      {/* Git panel */}
+      <GitPanel
+        isOpen={showGitPanel}
+        onClose={() => closePanel('git', setShowGitPanel)}
+        projectPath={atlasProjectPath}
+        activeSessionId={activeSessionId}
+      />
+
       {/* Team panel */}
       <TeamPanel
         isOpen={showTeamPanel}
-        onClose={() => setShowTeamPanel(false)}
+        onClose={() => closePanel('teams', setShowTeamPanel)}
         teams={teams}
         sessions={sessions as any}
         onCloseTeam={closeTeam}
@@ -745,7 +878,7 @@ function App() {
       {/* Settings dialog */}
       <SettingsDialog
         isOpen={showSettingsDialog}
-        onClose={() => setShowSettingsDialog(false)}
+        onClose={() => closePanel('settings', setShowSettingsDialog)}
         workspaces={workspaces}
         onAddWorkspace={handleAddWorkspace}
         onUpdateWorkspace={handleUpdateWorkspace}
@@ -756,7 +889,7 @@ function App() {
       {/* Budget panel */}
       <BudgetPanel
         isOpen={showBudgetPanel}
-        onClose={() => setShowBudgetPanel(false)}
+        onClose={() => closePanel('budget', setShowBudgetPanel)}
         quota={quotaData}
         burnRate={burnRateData}
         isLoading={isQuotaLoading}
@@ -766,13 +899,13 @@ function App() {
       {/* History panel */}
       <HistoryPanel
         isOpen={showHistoryPanel}
-        onClose={() => setShowHistoryPanel(false)}
+        onClose={() => closePanel('history', setShowHistoryPanel)}
       />
 
       {/* Checkpoint panel */}
       <CheckpointPanel
         isOpen={showCheckpointPanel}
-        onClose={() => setShowCheckpointPanel(false)}
+        onClose={() => closePanel('checkpoints', setShowCheckpointPanel)}
         sessionId={activeSessionId || undefined}
       />
 
@@ -783,6 +916,14 @@ function App() {
         sessionName={sessions.find(s => s.id === activeSessionId)?.name}
         onConfirm={handleCreateCheckpoint}
         onCancel={() => setShowCheckpointDialog(false)}
+      />
+
+      {/* Model History panel */}
+      <ModelHistoryPanel
+        isOpen={showModelHistoryPanel}
+        onClose={() => closePanel('modelHistory', setShowModelHistoryPanel)}
+        sessionId={activeSessionId}
+        sessionName={sessions.find(s => s.id === activeSessionId)?.name}
       />
 
       {/* About dialog */}
@@ -804,6 +945,36 @@ function App() {
         onManageTemplates={() => {
           commandPalette.close();
           setShowSettingsDialog(true);
+        }}
+      />
+
+      {/* Welcome Wizard */}
+      <WelcomeWizard
+        isOpen={showWizard}
+        onComplete={handleWizardComplete}
+        onTryFeature={handleWizardTryFeature}
+      />
+
+      {/* Keyboard Shortcuts Panel */}
+      <ShortcutsPanel
+        isOpen={showShortcutsPanel}
+        onClose={() => closePanel('shortcuts', setShowShortcutsPanel)}
+      />
+
+      {/* Layout Picker */}
+      <LayoutPicker
+        isOpen={layoutPicker.isPickerOpen}
+        presets={layoutPicker.presets}
+        currentPresetId={layoutPicker.currentPresetId}
+        onSelectPreset={async (preset) => {
+          await applyLayoutPreset(preset);
+          layoutPicker.setCurrentPresetId(preset.id);
+        }}
+        onCreateCustom={async (rows, cols) => {
+          await createCustomLayout(rows, cols);
+        }}
+        onClose={() => {
+          layoutPicker.closePicker();
         }}
       />
 
@@ -871,7 +1042,8 @@ const appStyles = `
 
   .terminal-container {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 8px;
     background: #1a1b26;
   }

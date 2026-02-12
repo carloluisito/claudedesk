@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { LayoutNode, LayoutBranch, SplitDirection } from '../../shared/ipc-types';
+import { LayoutNode, LayoutBranch, LayoutGrid, SplitDirection } from '../../shared/ipc-types';
 
 interface SplitLayoutProps {
   layout: LayoutNode;
@@ -146,6 +146,41 @@ export function SplitLayout({
           onDrop={handleDrop}
         >
           {renderPane(node.paneId, node.sessionId, node.paneId === focusedPaneId)}
+        </div>
+      );
+    }
+
+    // Grid: render as CSS Grid
+    if (node.type === 'grid') {
+      const grid = node as LayoutGrid;
+
+      // Add defensive check for missing children
+      if (!grid.children || grid.children.length === 0) {
+        console.error('Invalid grid node - missing or empty children:', grid);
+        return null;
+      }
+
+      // Construct grid template based on direction and sizes
+      const isHorizontal = grid.direction === 'horizontal';
+      const gridTemplateProperty = isHorizontal ? 'gridTemplateColumns' : 'gridTemplateRows';
+      const gridTemplate = grid.sizes.map(size => `${size}fr`).join(' ');
+
+      return (
+        <div
+          className={`split-grid split-grid-${grid.direction}`}
+          style={{
+            display: 'grid',
+            [gridTemplateProperty]: gridTemplate,
+            gap: '2px',
+            width: '100%',
+            height: '100%',
+          }}
+        >
+          {grid.children.map((child, index) => (
+            <div key={index} className="split-grid-item">
+              {renderNode(child, [...path, index], depth + 1)}
+            </div>
+          ))}
         </div>
       );
     }

@@ -4,11 +4,18 @@ export type PermissionMode = 'standard' | 'skip-permissions';
 // Session status
 export type SessionStatus = 'starting' | 'running' | 'exited' | 'error';
 
+// Claude model types
+export type ClaudeModel = 'sonnet' | 'opus' | 'haiku' | 'auto';
+
+// Model preset types
+export type ModelPreset = 'cheap' | 'balanced' | 'power';
+
 // Session creation request
 export interface SessionCreateRequest {
   name?: string;
   workingDirectory: string;
   permissionMode: PermissionMode;
+  model?: ClaudeModel; // Starting model override (defaults to AppSettings.defaultModel)
 }
 
 // Session metadata
@@ -24,6 +31,7 @@ export interface SessionMetadata {
   agentId?: string;
   agentType?: 'lead' | 'teammate';
   isTeammate?: boolean;
+  currentModel?: ClaudeModel | null; // null = not yet detected
 }
 
 // Session list response
@@ -55,6 +63,14 @@ export interface SessionResizeRequest {
 export interface SessionExitEvent {
   sessionId: string;
   exitCode: number;
+}
+
+// Model switch event
+export interface ModelSwitchEvent {
+  sessionId: string;
+  model: ClaudeModel;
+  previousModel: ClaudeModel | null;
+  detectedAt: number;
 }
 
 // Persisted session state
@@ -124,7 +140,15 @@ export interface LayoutBranch {
   children: [LayoutNode, LayoutNode];
 }
 
-export type LayoutNode = LayoutLeaf | LayoutBranch;
+export interface LayoutGrid {
+  type: 'grid';
+  id: string;
+  direction: 'horizontal' | 'vertical'; // row or column
+  children: LayoutNode[];
+  sizes: number[]; // percentage for each child (must sum to 100)
+}
+
+export type LayoutNode = LayoutLeaf | LayoutBranch | LayoutGrid;
 
 export interface SplitViewState {
   layout: LayoutNode;
@@ -147,6 +171,15 @@ export interface AppSettings {
   sessionPoolSettings?: SessionPoolSettings;
   autoLayoutTeams?: boolean;
   atlasSettings?: import('./types/atlas-types').AtlasSettings;
+  hasLaunchedBefore?: boolean; // Track first launch for Layout Picker
+  lastUsedLayoutPresetId?: string; // Track which preset was last applied
+  wizardCompleted?: boolean; // Track if welcome wizard has been completed
+  tooltipCoachDismissed?: Record<string, boolean>; // Track dismissed tooltip coach hints
+  panelHelpDismissed?: Record<string, boolean>; // Track dismissed panel help overlays
+  uiMode?: 'beginner' | 'expert'; // UI complexity mode (default: beginner)
+  defaultModel?: ClaudeModel; // Default model for new sessions (default: 'sonnet')
+  modelPreset?: ModelPreset; // Model preset mode (default: 'balanced')
+  gitSettings?: import('./types/git-types').GitSettings;
 }
 
 // Workspace create request
@@ -322,4 +355,22 @@ export type {
   DomainSensitivity,
   AtlasOutputLocation,
 } from './types/atlas-types';
+
+export type {
+  GitFileStatus,
+  GitFileArea,
+  GitFileEntry,
+  GitBranchInfo,
+  GitStatus,
+  GitCommitInfo,
+  GitDiffResult,
+  CommitType,
+  CommitConfidence,
+  GeneratedCommitMessage,
+  GitOperationResult,
+  GitErrorCode,
+  GitCommitRequest,
+  GitRemoteProgress,
+  GitSettings,
+} from './types/git-types';
 

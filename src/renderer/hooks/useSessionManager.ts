@@ -102,10 +102,15 @@ export function useSessionManager(): UseSessionManagerReturn {
     permissionMode: 'standard' | 'skip-permissions'
   ) => {
     try {
+      // Read default model from settings
+      const settings = await window.electronAPI.getSettings();
+      const defaultModel = settings.defaultModel || 'sonnet';
+
       await window.electronAPI.createSession({
         name: name || undefined,
         workingDirectory,
         permissionMode,
+        model: defaultModel,
       });
     } catch (err) {
       console.error('Failed to create session:', err);

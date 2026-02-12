@@ -1,6 +1,6 @@
 {
   "name": "claudedesk",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "description": "A minimal Electron desktop application wrapping Claude Code CLI",
   "main": "dist/main/index.js",
   "scripts": {
@@ -15,7 +15,13 @@
     "package:win": "npm run package -- --win",
     "package:mac": "npm run package -- --mac",
     "package:linux": "npm run package -- --linux",
-    "test": "echo \"No tests configured yet\""
+    "test": "vitest run --config vitest.workspace.ts",
+    "test:watch": "vitest --config vitest.workspace.ts",
+    "test:unit": "vitest run --config vitest.workspace.ts --project shared --project main",
+    "test:integration": "vitest run --config vitest.workspace.ts --project renderer",
+    "test:e2e": "playwright test",
+    "test:coverage": "vitest run --config vitest.workspace.ts --coverage",
+    "test:ci": "vitest run --config vitest.workspace.ts --coverage --reporter=default --reporter=junit --outputFile=test-results.xml"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.0",
@@ -27,21 +33,28 @@
     "xterm-addon-web-links": "^0.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/uuid": "^9.0.0",
     "@vitejs/plugin-react": "^4.2.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
+    "jsdom": "^28.0.0",
     "postcss": "^8.4.32",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.3.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^4.0.18"
   },
   "author": "Carlo Luisito Adap <carlo.adap@hotmail.com>",
   "license": "MIT"

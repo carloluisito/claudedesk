@@ -4,11 +4,14 @@ import { CLIManager } from './cli-manager';
 import { HistoryManager } from './history-manager';
 import { SessionPool } from './session-pool';
 import { IPCEmitter } from './ipc-emitter';
+import { ModelHistoryManager } from './model-history-manager';
 import {
   SessionMetadata,
   SessionCreateRequest,
   SessionListResponse,
   SessionOutput,
+  ClaudeModel,
+  ModelSwitchEvent,
 } from '../shared/ipc-types';
 import {
   loadSessionState,
@@ -31,6 +34,7 @@ export class SessionManager {
   private historyManager: HistoryManager;
   private sessionPool: SessionPool;
   private sessionEndCallbacks: Array<(sessionId: string) => void> = [];
+  private modelHistoryManager: ModelHistoryManager | null = null;
 
   constructor(historyManager: HistoryManager, sessionPool: SessionPool) {
     this.historyManager = historyManager;
@@ -52,6 +56,10 @@ export class SessionManager {
 
   setMainWindow(window: BrowserWindow): void {
     this.emitter = new IPCEmitter(window);
+  }
+
+  setModelHistoryManager(manager: ModelHistoryManager): void {
+    this.modelHistoryManager = manager;
   }
 
   initialize(): void {
@@ -109,6 +117,8 @@ export class SessionManager {
       throw new Error('Invalid working directory');
     }
 
+    const model = request.model;
+
     const id = uuidv4();
     const metadata: SessionMetadata = {
       id,
@@ -119,6 +129,64 @@ export class SessionManager {
       createdAt: Date.now(),
     };
 
+    // Register all callbacks on a CLIManager BEFORE any async operations
+    // that produce PTY output (fixes race where Phase 1 fires before callback is set)
+    const registerCallbacks = (mgr: CLIManager) => {
+      mgr.onModelChange((model: ClaudeModel) => {
+        const session = this.sessions.get(id);
+        if (session) {
+          const previousModel = session.metadata.currentModel ?? null;
+          session.metadata.currentModel = model;
+
+          const event: ModelSwitchEvent = {
+            sessionId: id,
+            model,
+            previousModel,
+            detectedAt: Date.now(),
+          };
+
+          // Emit model change event
+          this.emitter?.emit('onModelChanged', event);
+
+          // Log to model history
+          if (this.modelHistoryManager) {
+            this.modelHistoryManager.logSwitch(event);
+          }
+
+          // Also emit general session updated
+          this.emitter?.emit('onSessionUpdated', session.metadata);
+          this.persistState();
+        }
+      });
+
+      mgr.onOutput((data: string) => {
+        const output: SessionOutput = { sessionId: id, data };
+        this.emitter?.emit('onSessionOutput', output);
+
+        // Record to history (async, non-blocking)
+        this.historyManager.recordOutput(id, data).catch(err => {
+          console.error('Failed to record history:', err);
+        });
+      });
+
+      mgr.onExit((exitCode: number) => {
+        const session = this.sessions.get(id);
+        if (session) {
+          session.metadata.status = 'exited';
+          session.metadata.exitCode = exitCode;
+          this.emitter?.emit('onSessionUpdated', session.metadata);
+          this.emitter?.emit('onSessionExited', { sessionId: id, exitCode });
+          this.persistState();
+          this.notifySessionEnd(id);
+
+          // Flush final history buffer
+          this.historyManager.onSessionExit(id, exitCode).catch(err => {
+            console.error('Failed to finalize session history:', err);
+          });
+        }
+      });
+    };
+
     // Try to claim from pool first
     const pooledSession = this.sessionPool.claim();
     let cliManager: CLIManager;
@@ -127,8 +195,9 @@ export class SessionManager {
       // POOL PATH: Activate pooled session
       console.log(`[SessionManager] Using pooled session ${pooledSession.id} for ${id}`);
       cliManager = pooledSession.cliManager;
+      registerCallbacks(cliManager);
       try {
-        await cliManager.initializeSession(workingDir, request.permissionMode);
+        await cliManager.initializeSession(workingDir, request.permissionMode, model);
       } catch (err) {
         // Activation failed, fall back to direct creation
         console.error('[SessionManager] Pooled session activation failed, falling back to direct creation:', err);
@@ -136,7 +205,9 @@ export class SessionManager {
         cliManager = new CLIManager({
           workingDirectory: workingDir,
           permissionMode: request.permissionMode,
+          model,
         });
+        registerCallbacks(cliManager);
         await cliManager.spawn();
       }
     } else {
@@ -145,38 +216,11 @@ export class SessionManager {
       cliManager = new CLIManager({
         workingDirectory: workingDir,
         permissionMode: request.permissionMode,
+        model,
       });
+      registerCallbacks(cliManager);
       cliManager.spawn();
     }
-
-    // Set up output handler
-    cliManager.onOutput((data: string) => {
-      const output: SessionOutput = { sessionId: id, data };
-      this.emitter?.emit('onSessionOutput', output);
-
-      // Record to history (async, non-blocking)
-      this.historyManager.recordOutput(id, data).catch(err => {
-        console.error('Failed to record history:', err);
-      });
-    });
-
-    // Set up exit handler
-    cliManager.onExit((exitCode: number) => {
-      const session = this.sessions.get(id);
-      if (session) {
-        session.metadata.status = 'exited';
-        session.metadata.exitCode = exitCode;
-        this.emitter?.emit('onSessionUpdated', session.metadata);
-        this.emitter?.emit('onSessionExited', { sessionId: id, exitCode });
-        this.persistState();
-        this.notifySessionEnd(id);
-
-        // Flush final history buffer
-        this.historyManager.onSessionExit(id, exitCode).catch(err => {
-          console.error('Failed to finalize session history:', err);
-        });
-      }
-    });
 
     // Update history metadata with session details
     this.historyManager.updateSessionMetadata(id, metadata.name, workingDir);
@@ -299,6 +343,33 @@ export class SessionManager {
     });
 
     // Set up handlers
+    cliManager.onModelChange((model: ClaudeModel) => {
+      const session = this.sessions.get(sessionId);
+      if (session) {
+        const previousModel = session.metadata.currentModel ?? null;
+        session.metadata.currentModel = model;
+
+        const event: ModelSwitchEvent = {
+          sessionId,
+          model,
+          previousModel,
+          detectedAt: Date.now(),
+        };
+
+        // Emit model change event
+        this.emitter?.emit('onModelChanged', event);
+
+        // Log to model history
+        if (this.modelHistoryManager) {
+          this.modelHistoryManager.logSwitch(event);
+        }
+
+        // Also emit general session updated
+        this.emitter?.emit('onSessionUpdated', session.metadata);
+        this.persistState();
+      }
+    });
+
     cliManager.onOutput((data: string) => {
       const output: SessionOutput = { sessionId, data };
       this.emitter?.emit('onSessionOutput', output);
@@ -328,6 +399,7 @@ export class SessionManager {
     session.cliManager = cliManager;
     session.metadata.status = 'starting';
     session.metadata.exitCode = undefined;
+    session.metadata.currentModel = undefined; // Clear stale model — Phase 1 will re-detect
 
     try {
       cliManager.spawn();

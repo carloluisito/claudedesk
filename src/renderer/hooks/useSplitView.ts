@@ -5,6 +5,16 @@ import {
   SplitDirection,
   SplitViewState,
 } from '../../shared/ipc-types';
+import { LayoutPreset } from '../../types/layout-presets';
+import {
+  countPanes,
+  traverseTree,
+  transformTree,
+  pruneTree,
+  updateRatioAtPath,
+  getAllPaneIds,
+  getFirstPaneId,
+} from '../utils/layout-tree';
 
 export interface UseSplitViewReturn {
   layout: LayoutNode;
@@ -19,6 +29,8 @@ export interface UseSplitViewReturn {
   focusDirection: (direction: 'left' | 'right' | 'up' | 'down') => void;
   setRatio: (branchPath: number[], ratio: number) => void;
   collapseSplitView: () => void;
+  applyLayoutPreset: (preset: LayoutPreset) => Promise<void>;
+  createCustomLayout: (rows: number, cols: number) => Promise<void>;
 }
 
 // Create a default single-pane layout
@@ -37,114 +49,6 @@ function createSinglePaneLayout(paneId: string, sessionId: string | null = null)
     paneId,
     sessionId,
   };
-}
-
-// Count total panes in the layout tree
-function countPanes(node: LayoutNode): number {
-  if (node.type === 'leaf') {
-    return 1;
-  }
-  return countPanes(node.children[0]) + countPanes(node.children[1]);
-}
-
-// Traverse the tree and call a callback for each node
-function traverseTree(node: LayoutNode, callback: (node: LayoutNode) => void): void {
-  callback(node);
-  if (node.type === 'branch') {
-    traverseTree(node.children[0], callback);
-    traverseTree(node.children[1], callback);
-  }
-}
-
-// Transform the tree by applying a function to each node
-function transformTree(node: LayoutNode, fn: (node: LayoutNode) => LayoutNode): LayoutNode {
-  // First, recursively transform children if this is a branch (BEFORE transformation)
-  let processedNode = node;
-  if (node.type === 'branch') {
-    processedNode = {
-      ...node,
-      children: [
-        transformTree(node.children[0], fn),
-        transformTree(node.children[1], fn),
-      ] as [LayoutNode, LayoutNode],
-    };
-  }
-
-  // Then apply the transformation to this node
-  // This prevents infinite recursion when a leaf is transformed into a branch
-  // containing itself as a child
-  return fn(processedNode);
-}
-
-// Prune a pane from the tree (remove leaf and promote sibling)
-function pruneTree(node: LayoutNode, paneIdToRemove: string): LayoutNode {
-  if (node.type === 'leaf') {
-    return node;
-  }
-
-  const [left, right] = node.children;
-
-  // Check if left child is the pane to remove
-  if (left.type === 'leaf' && left.paneId === paneIdToRemove) {
-    return pruneTree(right, paneIdToRemove);
-  }
-
-  // Check if right child is the pane to remove
-  if (right.type === 'leaf' && right.paneId === paneIdToRemove) {
-    return pruneTree(left, paneIdToRemove);
-  }
-
-  // Recursively prune children
-  const prunedLeft = pruneTree(left, paneIdToRemove);
-  const prunedRight = pruneTree(right, paneIdToRemove);
-
-  // If one child was completely pruned, promote the other
-  if (prunedLeft !== left && countPanes(prunedLeft) === 0) {
-    return prunedRight;
-  }
-  if (prunedRight !== right && countPanes(prunedRight) === 0) {
-    return prunedLeft;
-  }
-
-  return {
-    ...node,
-    children: [prunedLeft, prunedRight] as [LayoutNode, LayoutNode],
-  };
-}
-
-// Update ratio at a specific branch path
-function updateRatioAtPath(node: LayoutNode, path: number[], ratio: number): LayoutNode {
-  if (path.length === 0) {
-    if (node.type === 'branch') {
-      return { ...node, ratio: Math.max(0.1, Math.min(0.9, ratio)) };
-    }
-    return node;
-  }
-
-  if (node.type === 'branch') {
-    const [childIndex, ...rest] = path;
-    const newChildren = [...node.children] as [LayoutNode, LayoutNode];
-    newChildren[childIndex] = updateRatioAtPath(newChildren[childIndex], rest, ratio);
-    return { ...node, children: newChildren };
-  }
-
-  return node;
-}
-
-// Get all pane IDs in the tree
-function getAllPaneIds(node: LayoutNode): string[] {
-  if (node.type === 'leaf') {
-    return [node.paneId];
-  }
-  return [...getAllPaneIds(node.children[0]), ...getAllPaneIds(node.children[1])];
-}
-
-// Find the first pane ID in the tree
-function getFirstPaneId(node: LayoutNode): string {
-  if (node.type === 'leaf') {
-    return node.paneId;
-  }
-  return getFirstPaneId(node.children[0]);
 }
 
 export function useSplitView(): UseSplitViewReturn {
@@ -178,6 +82,27 @@ export function useSplitView(): UseSplitViewReturn {
         isValidLayout(node.children[0]) &&
         isValidLayout(node.children[1])
       );
+    }
+    if (node.type === 'grid') {
+      if (
+        typeof node.id !== 'string' ||
+        (node.direction !== 'horizontal' && node.direction !== 'vertical') ||
+        !Array.isArray(node.children) ||
+        !Array.isArray(node.sizes) ||
+        node.children.length !== node.sizes.length ||
+        node.children.length === 0
+      ) {
+        return false;
+      }
+
+      // Validate sizes sum to approximately 100
+      const sum = node.sizes.reduce((a: number, b: number) => a + b, 0);
+      if (Math.abs(sum - 100) > 0.5) {
+        return false;
+      }
+
+      // Validate all children
+      return node.children.every((child: any) => isValidLayout(child));
     }
     return false;
   }
@@ -246,12 +171,7 @@ export function useSplitView(): UseSplitViewReturn {
   }, [layout, focusedPaneId]);
 
   const splitPane = useCallback((paneId: string, direction: SplitDirection): string => {
-    // Check if we're already at max panes
-    if (countPanes(layout) >= 4) {
-      console.warn('Cannot split: maximum of 4 panes reached');
-      return paneId;
-    }
-
+    // No max pane limit — unlimited panes now supported
     const newPaneId = uuidv4();
     setLayout(prev => {
       return transformTree(prev, (node) => {
@@ -337,20 +257,56 @@ export function useSplitView(): UseSplitViewReturn {
         return;
       }
 
-      // Branch: split the rectangle based on direction and ratio
-      const [first, second] = node.children;
-      const ratio = node.ratio;
+      if (node.type === 'branch') {
+        // Branch: split the rectangle based on direction and ratio
+        const [first, second] = node.children;
+        const ratio = node.ratio;
 
-      if (node.direction === 'horizontal') {
-        // Split left/right
-        const splitX = rect.left + (rect.right - rect.left) * ratio;
-        buildPaneMap(first, [...path, 0], { ...rect, right: splitX });
-        buildPaneMap(second, [...path, 1], { ...rect, left: splitX });
-      } else {
-        // Split top/bottom
-        const splitY = rect.top + (rect.bottom - rect.top) * ratio;
-        buildPaneMap(first, [...path, 0], { ...rect, bottom: splitY });
-        buildPaneMap(second, [...path, 1], { ...rect, top: splitY });
+        if (node.direction === 'horizontal') {
+          // Split left/right
+          const splitX = rect.left + (rect.right - rect.left) * ratio;
+          buildPaneMap(first, [...path, 0], { ...rect, right: splitX });
+          buildPaneMap(second, [...path, 1], { ...rect, left: splitX });
+        } else {
+          // Split top/bottom
+          const splitY = rect.top + (rect.bottom - rect.top) * ratio;
+          buildPaneMap(first, [...path, 0], { ...rect, bottom: splitY });
+          buildPaneMap(second, [...path, 1], { ...rect, top: splitY });
+        }
+        return;
+      }
+
+      if (node.type === 'grid') {
+        // Grid: distribute space evenly among children
+        const sizes = node.sizes;
+        let currentPos = 0;
+
+        node.children.forEach((child, index) => {
+          const size = sizes[index];
+          if (node.direction === 'horizontal') {
+            // Horizontal grid: split columns
+            const width = (rect.right - rect.left) * (size / 100);
+            const left = rect.left + currentPos;
+            buildPaneMap(child, [...path, index], {
+              left,
+              top: rect.top,
+              right: left + width,
+              bottom: rect.bottom
+            });
+            currentPos += width;
+          } else {
+            // Vertical grid: split rows
+            const height = (rect.bottom - rect.top) * (size / 100);
+            const top = rect.top + currentPos;
+            buildPaneMap(child, [...path, index], {
+              left: rect.left,
+              top,
+              right: rect.right,
+              bottom: top + height
+            });
+            currentPos += height;
+          }
+        });
       }
     }
 
@@ -444,6 +400,46 @@ export function useSplitView(): UseSplitViewReturn {
     return ids;
   }, [layout]);
 
+  const applyLayoutPreset = useCallback(async (preset: LayoutPreset) => {
+    try {
+      // Apply the preset via IPC (which will update settings)
+      const success = await window.electronAPI.applyLayoutPreset(preset.id);
+
+      if (success) {
+        // Reload the layout from settings
+        const settings = await window.electronAPI.getSettings();
+        if (settings.splitViewState) {
+          setLayout(settings.splitViewState.layout);
+          // Set focus to first pane
+          const firstPaneId = getFirstPaneId(settings.splitViewState.layout);
+          setFocusedPaneId(firstPaneId);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to apply layout preset:', err);
+    }
+  }, []);
+
+  const createCustomLayout = useCallback(async (rows: number, cols: number) => {
+    try {
+      // Create custom layout via IPC (which will update settings)
+      const success = await window.electronAPI.applyCustomLayout(rows, cols);
+
+      if (success) {
+        // Reload the layout from settings
+        const settings = await window.electronAPI.getSettings();
+        if (settings.splitViewState) {
+          setLayout(settings.splitViewState.layout);
+          // Set focus to first pane
+          const firstPaneId = getFirstPaneId(settings.splitViewState.layout);
+          setFocusedPaneId(firstPaneId);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to create custom layout:', err);
+    }
+  }, []);
+
   const isSplitActive = useMemo(() => countPanes(layout) > 1, [layout]);
   const paneCount = useMemo(() => countPanes(layout), [layout]);
 
@@ -460,5 +456,7 @@ export function useSplitView(): UseSplitViewReturn {
     focusDirection,
     setRatio,
     collapseSplitView,
+    applyLayoutPreset,
+    createCustomLayout,
   };
 }

@@ -33,6 +33,8 @@ import type {
   TeammateDetectedEvent,
   TasksUpdatedEvent,
   TeamRemovedEvent,
+  ClaudeModel,
+  ModelSwitchEvent,
 } from './ipc-types';
 
 import type {
@@ -63,6 +65,23 @@ import type {
   AtlasSettings,
   AtlasScanProgress,
 } from './types/atlas-types';
+
+import type {
+  LayoutPreset,
+} from '../types/layout-presets';
+
+import type { LayoutNode } from './ipc-types';
+
+import type {
+  GitStatus,
+  GitBranchInfo,
+  GitCommitInfo,
+  GitDiffResult,
+  GitOperationResult,
+  GitCommitRequest,
+  GeneratedCommitMessage,
+  GitRemoteProgress,
+} from './types/git-types';
 
 // ─── Contract helper types ──────────────────────────────────────────
 
@@ -107,6 +126,13 @@ export interface IPCContractMap {
   resizeSession:       SendContract<'session:resize', [SessionResizeRequest]>;
   sessionReady:        SendContract<'session:ready',  [string]>;
 
+  // ── Model switching (invoke) ──
+  switchModel:         InvokeContract<'model:switch', [string, ClaudeModel], boolean>;
+
+  // ── Model History (invoke) ──
+  getModelHistory:     InvokeContract<'model:getHistory',   [string], import('../main/model-history-manager').ModelSwitchHistoryEntry[]>;
+  clearModelHistory:   InvokeContract<'model:clearHistory', [string], boolean>;
+
   // ── Window controls (send) ──
   minimizeWindow:      SendContract<'window:minimize', []>;
   maximizeWindow:      SendContract<'window:maximize', []>;
@@ -119,6 +145,7 @@ export interface IPCContractMap {
   onSessionUpdated:    EventContract<'session:updated',  SessionMetadata>;
   onSessionOutput:     EventContract<'session:output',   SessionOutput>;
   onSessionExited:     EventContract<'session:exited',   SessionExitEvent>;
+  onModelChanged:      EventContract<'model:changed',    ModelSwitchEvent>;
 
   // ── Dialogs & File system (invoke) ──
   browseDirectory:     InvokeContract<'dialog:browseDirectory', [],                              string | null>;
@@ -192,6 +219,8 @@ export interface IPCContractMap {
   unlinkSessionFromTeam: InvokeContract<'teams:unlinkSession', [string],                          boolean>;
   closeTeam:           InvokeContract<'teams:close',          [string],                           boolean>;
   updateAutoLayoutTeams: InvokeContract<'settings:updateAutoLayout', [boolean],                   boolean>;
+  updateUIMode:          InvokeContract<'settings:updateUIMode',     ['beginner' | 'expert'],     boolean>;
+  updateDefaultModel:    InvokeContract<'settings:updateDefaultModel', [ClaudeModel],              boolean>;
 
   // ── Agent Teams events (main→renderer) ──
   onTeamDetected:      EventContract<'teams:detected',        TeamInfo>;
@@ -206,8 +235,46 @@ export interface IPCContractMap {
   getAtlasSettings:    InvokeContract<'atlas:getSettings',    [],                                 AtlasSettings>;
   updateAtlasSettings: InvokeContract<'atlas:updateSettings', [Partial<AtlasSettings>],           AtlasSettings>;
 
+  // ── Command Registry (invoke) ──
+  searchCommands:      InvokeContract<'commands:search',      [string, number?],                  import('./types/command-types').CommandSearchResult[]>;
+  getAllCommands:      InvokeContract<'commands:getAll',      [],                                 import('./types/command-types').CommandRegistryData>;
+  executeCommand:      InvokeContract<'commands:execute',     [string, any[]?],                   boolean>;
+
   // ── Repository Atlas events (main→renderer) ──
   onAtlasScanProgress: EventContract<'atlas:scanProgress', AtlasScanProgress>;
+
+  // ── Layout Presets (invoke) ──
+  getLayoutPresets:    InvokeContract<'layout:getPresets',    [],                                 LayoutPreset[]>;
+  applyLayoutPreset:   InvokeContract<'layout:apply',         [string],                           boolean>;
+  applyCustomLayout:   InvokeContract<'layout:applyCustom',   [number, number],                   boolean>;
+  getCurrentLayout:    InvokeContract<'layout:getCurrent',    [],                                 LayoutNode>;
+
+  // ── Git Integration (invoke) ──
+  getGitStatus:        InvokeContract<'git:status',          [string],                              GitStatus>;
+  getGitBranches:      InvokeContract<'git:branches',        [string],                              GitBranchInfo[]>;
+  gitStageFiles:       InvokeContract<'git:stage',           [string, string[]],                    GitOperationResult>;
+  gitUnstageFiles:     InvokeContract<'git:unstage',         [string, string[]],                    GitOperationResult>;
+  gitStageAll:         InvokeContract<'git:stageAll',        [string],                              GitOperationResult>;
+  gitUnstageAll:       InvokeContract<'git:unstageAll',      [string],                              GitOperationResult>;
+  gitCommit:           InvokeContract<'git:commit',          [GitCommitRequest],                    GitOperationResult>;
+  gitGenerateMessage:  InvokeContract<'git:generateMessage', [string],                              GeneratedCommitMessage>;
+  gitPush:             InvokeContract<'git:push',            [string, boolean?],                    GitOperationResult>;
+  gitPull:             InvokeContract<'git:pull',            [string],                              GitOperationResult>;
+  gitFetch:            InvokeContract<'git:fetch',           [string],                              GitOperationResult>;
+  gitSwitchBranch:     InvokeContract<'git:switchBranch',    [string, string],                      GitOperationResult>;
+  gitCreateBranch:     InvokeContract<'git:createBranch',    [string, string],                      GitOperationResult>;
+  gitLog:              InvokeContract<'git:log',             [string, number?],                     GitCommitInfo[]>;
+  gitDiff:             InvokeContract<'git:diff',            [string, string, boolean],             GitDiffResult>;
+  gitCommitDiff:       InvokeContract<'git:commitDiff',      [string, string],                      GitCommitInfo>;
+  gitDiscardFile:      InvokeContract<'git:discardFile',     [string, string],                      GitOperationResult>;
+  gitDiscardAll:       InvokeContract<'git:discardAll',      [string],                              GitOperationResult>;
+  gitInit:             InvokeContract<'git:init',            [string],                              GitOperationResult>;
+  gitStartWatching:    InvokeContract<'git:startWatching',   [string],                              boolean>;
+  gitStopWatching:     InvokeContract<'git:stopWatching',    [string],                              boolean>;
+
+  // ── Git events (main→renderer) ──
+  onGitStatusChanged:  EventContract<'git:statusChanged',    GitStatus>;
+  onGitRemoteProgress: EventContract<'git:remoteProgress',   GitRemoteProgress>;
 
   // ── App info (invoke) ──
   getVersionInfo:      InvokeContract<'app:getVersionInfo', [],                                  AppVersionInfo>;
@@ -233,6 +300,13 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   resizeSession:       'session:resize',
   sessionReady:        'session:ready',
 
+  // Model switching
+  switchModel:         'model:switch',
+
+  // Model History
+  getModelHistory:     'model:getHistory',
+  clearModelHistory:   'model:clearHistory',
+
   // Window controls
   minimizeWindow:      'window:minimize',
   maximizeWindow:      'window:maximize',
@@ -245,6 +319,7 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   onSessionUpdated:    'session:updated',
   onSessionOutput:     'session:output',
   onSessionExited:     'session:exited',
+  onModelChanged:      'model:changed',
 
   // Dialogs
   browseDirectory:     'dialog:browseDirectory',
@@ -318,6 +393,8 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   unlinkSessionFromTeam: 'teams:unlinkSession',
   closeTeam:           'teams:close',
   updateAutoLayoutTeams: 'settings:updateAutoLayout',
+  updateUIMode:          'settings:updateUIMode',
+  updateDefaultModel:    'settings:updateDefaultModel',
 
   // Agent Teams events
   onTeamDetected:      'teams:detected',
@@ -332,8 +409,46 @@ export const channels: { [K in keyof IPCContractMap]: ChannelOf<K> } = {
   getAtlasSettings:    'atlas:getSettings',
   updateAtlasSettings: 'atlas:updateSettings',
 
+  // Command Registry
+  searchCommands:      'commands:search',
+  getAllCommands:      'commands:getAll',
+  executeCommand:      'commands:execute',
+
   // Repository Atlas events
   onAtlasScanProgress: 'atlas:scanProgress',
+
+  // Layout Presets
+  getLayoutPresets:    'layout:getPresets',
+  applyLayoutPreset:   'layout:apply',
+  applyCustomLayout:   'layout:applyCustom',
+  getCurrentLayout:    'layout:getCurrent',
+
+  // Git Integration
+  getGitStatus:        'git:status',
+  getGitBranches:      'git:branches',
+  gitStageFiles:       'git:stage',
+  gitUnstageFiles:     'git:unstage',
+  gitStageAll:         'git:stageAll',
+  gitUnstageAll:       'git:unstageAll',
+  gitCommit:           'git:commit',
+  gitGenerateMessage:  'git:generateMessage',
+  gitPush:             'git:push',
+  gitPull:             'git:pull',
+  gitFetch:            'git:fetch',
+  gitSwitchBranch:     'git:switchBranch',
+  gitCreateBranch:     'git:createBranch',
+  gitLog:              'git:log',
+  gitDiff:             'git:diff',
+  gitCommitDiff:       'git:commitDiff',
+  gitDiscardFile:      'git:discardFile',
+  gitDiscardAll:       'git:discardAll',
+  gitInit:             'git:init',
+  gitStartWatching:    'git:startWatching',
+  gitStopWatching:     'git:stopWatching',
+
+  // Git events
+  onGitStatusChanged:  'git:statusChanged',
+  onGitRemoteProgress: 'git:remoteProgress',
 
   // App info
   getVersionInfo:      'app:getVersionInfo',
@@ -357,6 +472,11 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   resizeSession:       'send',
   sessionReady:        'send',
 
+  switchModel:         'invoke',
+
+  getModelHistory:     'invoke',
+  clearModelHistory:   'invoke',
+
   minimizeWindow:      'send',
   maximizeWindow:      'send',
   closeWindow:         'send',
@@ -367,6 +487,7 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   onSessionUpdated:    'event',
   onSessionOutput:     'event',
   onSessionExited:     'event',
+  onModelChanged:      'event',
 
   browseDirectory:     'invoke',
   showSaveDialog:      'invoke',
@@ -396,6 +517,10 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   addTemplate:         'invoke',
   updateTemplate:      'invoke',
   deleteTemplate:      'invoke',
+
+  searchCommands:      'invoke',
+  getAllCommands:      'invoke',
+  executeCommand:      'invoke',
 
   getFileInfo:         'invoke',
   readFileContent:     'invoke',
@@ -429,6 +554,8 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   unlinkSessionFromTeam: 'invoke',
   closeTeam:           'invoke',
   updateAutoLayoutTeams: 'invoke',
+  updateUIMode:          'invoke',
+  updateDefaultModel:    'invoke',
 
   onTeamDetected:      'event',
   onTeammateAdded:     'event',
@@ -442,6 +569,36 @@ export const contractKinds: { [K in keyof IPCContractMap]: KindOf<K> } = {
   updateAtlasSettings: 'invoke',
 
   onAtlasScanProgress: 'event',
+
+  getLayoutPresets:    'invoke',
+  applyLayoutPreset:   'invoke',
+  applyCustomLayout:   'invoke',
+  getCurrentLayout:    'invoke',
+
+  // Git Integration
+  getGitStatus:        'invoke',
+  getGitBranches:      'invoke',
+  gitStageFiles:       'invoke',
+  gitUnstageFiles:     'invoke',
+  gitStageAll:         'invoke',
+  gitUnstageAll:       'invoke',
+  gitCommit:           'invoke',
+  gitGenerateMessage:  'invoke',
+  gitPush:             'invoke',
+  gitPull:             'invoke',
+  gitFetch:            'invoke',
+  gitSwitchBranch:     'invoke',
+  gitCreateBranch:     'invoke',
+  gitLog:              'invoke',
+  gitDiff:             'invoke',
+  gitCommitDiff:       'invoke',
+  gitDiscardFile:      'invoke',
+  gitDiscardAll:       'invoke',
+  gitInit:             'invoke',
+  gitStartWatching:    'invoke',
+  gitStopWatching:     'invoke',
+  onGitStatusChanged:  'event',
+  onGitRemoteProgress: 'event',
 
   getVersionInfo:      'invoke',
 };

@@ -46,6 +46,12 @@ export function SettingsDialog({
   // Auto-layout teams state
   const [autoLayoutTeams, setAutoLayoutTeams] = useState(true);
 
+  // UI mode state
+  const [uiMode, setUiMode] = useState<'beginner' | 'expert'>('beginner');
+
+  // Model settings state
+  const [defaultModel, setDefaultModel] = useState<import('../../../shared/ipc-types').ClaudeModel>('sonnet');
+
   // Session pool state
   const [poolSettings, setPoolSettings] = useState<SessionPoolSettings>({
     enabled: true,
@@ -106,6 +112,12 @@ export function SettingsDialog({
       }
       if (settings.autoLayoutTeams !== undefined) {
         setAutoLayoutTeams(settings.autoLayoutTeams);
+      }
+      if (settings.uiMode) {
+        setUiMode(settings.uiMode);
+      }
+      if (settings.defaultModel) {
+        setDefaultModel(settings.defaultModel);
       }
       await loadPoolStatus();
     } catch (err) {
@@ -494,6 +506,87 @@ export function SettingsDialog({
                   )}
                 </>
               )}
+            </div>
+
+            {/* Default Model Settings */}
+            <div className="setting-group">
+              <div className="setting-group-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" />
+                </svg>
+                <h4 className="setting-group-title">Default Model</h4>
+              </div>
+              <p className="setting-group-description">
+                Choose the starting model for new terminal sessions. You can switch models anytime during a session.
+              </p>
+
+              <div className="setting-item">
+                <div className="setting-label">Model Selection</div>
+                <div className="setting-select-wrapper">
+                  <select
+                    className="setting-select"
+                    value={defaultModel}
+                    onChange={async (e) => {
+                      const newModel = e.target.value as import('../../../shared/ipc-types').ClaudeModel;
+                      setDefaultModel(newModel);
+                      window.electronAPI.updateDefaultModel(newModel).catch(console.error);
+                    }}
+                  >
+                    <option value="haiku">Haiku - Fast & cheap (best for simple tasks)</option>
+                    <option value="sonnet">Sonnet - Balanced (recommended for most work)</option>
+                    <option value="opus">Opus - Powerful (best for complex reasoning)</option>
+                    <option value="auto">Auto - Let CLI decide</option>
+                  </select>
+                  <svg className="setting-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </div>
+                <p className="setting-hint">
+                  This sets the initial model for new sessions. Use the model switcher in session headers to change mid-session.
+                </p>
+              </div>
+            </div>
+
+            {/* User Interface Settings */}
+            <div className="setting-group">
+              <div className="setting-group-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <path d="M8 21h8" />
+                  <path d="M12 17v4" />
+                </svg>
+                <h4 className="setting-group-title">User Interface</h4>
+              </div>
+              <p className="setting-group-description">
+                Customize the interface complexity based on your experience level.
+              </p>
+
+              <div className="setting-item">
+                <div className="setting-label">UI Mode</div>
+                <div className="setting-select-wrapper">
+                  <select
+                    className="setting-select"
+                    value={uiMode}
+                    onChange={(e) => {
+                      const mode = e.target.value as 'beginner' | 'expert';
+                      setUiMode(mode);
+                      window.electronAPI.updateUIMode(mode).catch(console.error);
+                    }}
+                  >
+                    <option value="beginner">Beginner - Helpful labels and tooltips</option>
+                    <option value="expert">Expert - Minimal, icon-only interface</option>
+                  </select>
+                  <svg className="setting-select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </div>
+                <p className="setting-hint">
+                  {uiMode === 'beginner'
+                    ? 'Beginner mode shows grouped toolbars, labels, and tooltip coaching for easier discovery.'
+                    : 'Expert mode provides a streamlined, icon-only toolbar with minimal UI hints.'}
+                </p>
+              </div>
             </div>
 
             {/* Agent Teams Settings */}
@@ -1913,4 +2006,5 @@ const settingsStyles = `
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
+
 `;

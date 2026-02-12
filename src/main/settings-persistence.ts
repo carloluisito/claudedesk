@@ -55,6 +55,8 @@ function getDefaultSettings(): AppSettings {
       excludePatterns: [],
       scanTimeoutMs: 30000,
     },
+    defaultModel: 'sonnet',
+    modelPreset: 'balanced',
   };
 }
 
@@ -71,14 +73,26 @@ function validateSplitViewLayout(
     return { ...layout, sessionId };
   }
 
-  // Branch: recursively validate children
-  return {
-    ...layout,
-    children: [
-      validateSplitViewLayout(layout.children[0], validSessionIds),
-      validateSplitViewLayout(layout.children[1], validSessionIds)
-    ] as [LayoutNode, LayoutNode]
-  };
+  if (layout.type === 'branch') {
+    // Branch: recursively validate children
+    return {
+      ...layout,
+      children: [
+        validateSplitViewLayout(layout.children[0], validSessionIds),
+        validateSplitViewLayout(layout.children[1], validSessionIds)
+      ] as [LayoutNode, LayoutNode]
+    };
+  }
+
+  if (layout.type === 'grid') {
+    // Grid: recursively validate all children
+    return {
+      ...layout,
+      children: layout.children.map(child => validateSplitViewLayout(child, validSessionIds))
+    };
+  }
+
+  return layout;
 }
 
 // Get all pane IDs from layout tree
@@ -86,10 +100,16 @@ function getAllPaneIdsFromLayout(layout: LayoutNode): string[] {
   if (layout.type === 'leaf') {
     return [layout.paneId];
   }
-  return [
-    ...getAllPaneIdsFromLayout(layout.children[0]),
-    ...getAllPaneIdsFromLayout(layout.children[1])
-  ];
+  if (layout.type === 'branch') {
+    return [
+      ...getAllPaneIdsFromLayout(layout.children[0]),
+      ...getAllPaneIdsFromLayout(layout.children[1])
+    ];
+  }
+  if (layout.type === 'grid') {
+    return layout.children.flatMap(child => getAllPaneIdsFromLayout(child));
+  }
+  return [];
 }
 
 // Validate layout structure (ensure it's well-formed)
@@ -110,6 +130,28 @@ function isValidLayoutStructure(layout: LayoutNode): boolean {
         return false;
       }
       return isValidLayoutStructure(layout.children[0]) && isValidLayoutStructure(layout.children[1]);
+    }
+
+    if (layout.type === 'grid') {
+      if (typeof layout.id !== 'string' || layout.id.length === 0) {
+        return false;
+      }
+      if (layout.direction !== 'horizontal' && layout.direction !== 'vertical') {
+        return false;
+      }
+      if (!Array.isArray(layout.children) || layout.children.length === 0) {
+        return false;
+      }
+      if (!Array.isArray(layout.sizes) || layout.sizes.length !== layout.children.length) {
+        return false;
+      }
+      // Validate sizes sum to approximately 100
+      const sum = layout.sizes.reduce((a, b) => a + b, 0);
+      if (Math.abs(sum - 100) > 0.5) {
+        return false;
+      }
+      // Validate all children
+      return layout.children.every(child => isValidLayoutStructure(child));
     }
 
     return false;
@@ -368,6 +410,26 @@ export class SettingsManager {
 
   updateAutoLayoutTeams(enabled: boolean): void {
     this.settings.autoLayoutTeams = enabled;
+    saveSettings(this.settings);
+  }
+
+  updateUIMode(mode: 'beginner' | 'expert'): void {
+    this.settings.uiMode = mode;
+    saveSettings(this.settings);
+  }
+
+  updateDefaultModel(model: import('../shared/ipc-types').ClaudeModel): void {
+    this.settings.defaultModel = model;
+    saveSettings(this.settings);
+  }
+
+  updateLastUsedLayoutPreset(presetId: string): void {
+    this.settings.lastUsedLayoutPresetId = presetId;
+    saveSettings(this.settings);
+  }
+
+  markAsLaunched(): void {
+    this.settings.hasLaunchedBefore = true;
     saveSettings(this.settings);
   }
 

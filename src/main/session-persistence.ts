@@ -52,6 +52,7 @@ export function saveSessionState(
       status: session.status,
       createdAt: session.createdAt,
       exitCode: session.exitCode,
+      currentModel: session.currentModel,
     })),
     activeSessionId,
     lastModified: Date.now(),

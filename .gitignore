@@ -34,6 +34,12 @@ Session_*.md
 # Internal development docs
 .claudedesk/
 
+# Test output
+coverage/
+test-results/
+test-results.xml
+playwright-report/
+
 # Electron build artifacts
 .webpack/
 out/

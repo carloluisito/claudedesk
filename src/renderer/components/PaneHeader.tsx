@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { TabData } from './ui/Tab';
+import { SessionStatusIndicator, SessionStatus } from './ui/SessionStatusIndicator';
+import { StatusPopover } from './ui/StatusPopover';
 
 interface PaneHeaderProps {
   sessionId: string;
@@ -8,24 +10,34 @@ interface PaneHeaderProps {
   isFocused: boolean;
   availableSessions: TabData[];
   canSplit: boolean;
+  sessionStatus?: SessionStatus;
   onChangeSession: (sessionId: string) => void;
   onClosePane: () => void;
   onSplitHorizontal: () => void;
   onSplitVertical: () => void;
+  onOpenBudget?: () => void;
+  onOpenHistory?: () => void;
+  onCreateCheckpoint?: () => void;
 }
 
 export function PaneHeader({
+  sessionId,
   sessionName,
   workingDirectory,
   isFocused,
   availableSessions,
   canSplit,
+  sessionStatus = 'ready',
   onChangeSession,
   onClosePane,
   onSplitHorizontal,
   onSplitVertical,
+  onOpenBudget,
+  onOpenHistory,
+  onCreateCheckpoint,
 }: PaneHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showStatusPopover, setShowStatusPopover] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -50,6 +62,11 @@ export function PaneHeader({
   return (
     <div className={`pane-header ${isFocused ? 'focused' : ''}`}>
       <div className="pane-header-left">
+        <SessionStatusIndicator
+          status={sessionStatus}
+          onClick={() => setShowStatusPopover(true)}
+          size={8}
+        />
         <span className="pane-session-name">{sessionName}</span>
         <span className="pane-working-dir">{workingDirectory}</span>
       </div>
@@ -105,6 +122,17 @@ export function PaneHeader({
           )}
         </div>
       )}
+
+      <StatusPopover
+        sessionId={sessionId}
+        sessionName={sessionName}
+        status={sessionStatus}
+        isOpen={showStatusPopover}
+        onClose={() => setShowStatusPopover(false)}
+        onOpenBudget={onOpenBudget}
+        onOpenHistory={onOpenHistory}
+        onCreateCheckpoint={onCreateCheckpoint}
+      />
 
       <style>{`
         .pane-header {

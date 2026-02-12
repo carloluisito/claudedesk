@@ -11,6 +11,11 @@ export { ContextMenu } from './ContextMenu';
 export { ConfirmDialog } from './ConfirmDialog';
 export { CheckpointDialog } from './CheckpointDialog';
 export { EmptyState } from './EmptyState';
+export { FuelStatusIndicator } from './FuelStatusIndicator';
+export type { FuelStatusIndicatorProps } from './FuelStatusIndicator';
+export { FuelGaugeBar } from './FuelGaugeBar';
+export { ToolsDropdown } from './ToolsDropdown';
+export { FuelTooltip } from './FuelTooltip';
 // Re-export quota types from shared
 export type { ClaudeUsageQuota, BurnRateData, QuotaBucket } from '../../../shared/ipc-types';
 // Export prompt template components (from parent directory)

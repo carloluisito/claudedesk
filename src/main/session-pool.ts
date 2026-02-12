@@ -34,7 +34,9 @@ export class SessionPool {
       return;
     }
 
-    console.log(`[SessionPool] Initializing pool with size ${this.config.size}`);
+    try {
+      console.log(`[SessionPool] Initializing pool with size ${this.config.size}`);
+    } catch (err) { /* Ignore EPIPE */ }
 
     // Pre-spawn configured number of idle sessions
     const spawnPromises: Promise<void>[] = [];
@@ -48,7 +50,11 @@ export class SessionPool {
     // Start periodic cleanup of stale sessions
     this.startCleanupInterval();
 
-    console.log(`[SessionPool] Initialized with ${this.idleQueue.length} idle sessions`);
+    try {
+      console.log(`[SessionPool] Initialized with ${this.idleQueue.length} idle sessions`);
+    } catch (err) {
+      // Ignore EPIPE errors from console.log
+    }
   }
 
   /**
@@ -65,7 +71,11 @@ export class SessionPool {
       return null;
     }
 
-    console.log(`[SessionPool] Claimed session ${pooled.id}, ${this.idleQueue.length} remaining`);
+    try {
+      console.log(`[SessionPool] Claimed session ${pooled.id}, ${this.idleQueue.length} remaining`);
+    } catch (err) {
+      // Ignore EPIPE errors from console.log
+    }
 
     // Trigger async replenishment (non-blocking)
     this.replenishPool().catch(err => {
@@ -89,7 +99,9 @@ export class SessionPool {
 
     // If disabled, destroy all idle sessions
     if (!this.config.enabled && oldEnabled) {
-      console.log('[SessionPool] Disabled - destroying all idle sessions');
+      try {
+        console.log('[SessionPool] Disabled - destroying all idle sessions');
+      } catch (err) { /* Ignore EPIPE */ }
       this.destroyAllIdle();
       this.stopCleanupInterval();
       return;
@@ -97,9 +109,13 @@ export class SessionPool {
 
     // If enabled but was disabled, initialize
     if (this.config.enabled && !oldEnabled) {
-      console.log('[SessionPool] Enabled - initializing pool');
+      try {
+        console.log('[SessionPool] Enabled - initializing pool');
+      } catch (err) { /* Ignore EPIPE */ }
       this.initialize().catch(err => {
-        console.error('[SessionPool] Failed to initialize after enable:', err);
+        try {
+          console.error('[SessionPool] Failed to initialize after enable:', err);
+        } catch (e) { /* Ignore EPIPE */ }
       });
       return;
     }
@@ -108,10 +124,14 @@ export class SessionPool {
     if (this.config.enabled && this.config.size > oldSize) {
       const diff = this.config.size - this.idleQueue.length;
       if (diff > 0) {
-        console.log(`[SessionPool] Size increased - spawning ${diff} idle sessions`);
+        try {
+          console.log(`[SessionPool] Size increased - spawning ${diff} idle sessions`);
+        } catch (err) { /* Ignore EPIPE */ }
         for (let i = 0; i < diff; i++) {
           this.createIdleSession().catch(err => {
-            console.error('[SessionPool] Failed to spawn idle session:', err);
+            try {
+              console.error('[SessionPool] Failed to spawn idle session:', err);
+            } catch (e) { /* Ignore EPIPE */ }
           });
         }
       }
@@ -121,7 +141,9 @@ export class SessionPool {
     if (this.config.enabled && this.config.size < oldSize) {
       const excess = this.idleQueue.length - this.config.size;
       if (excess > 0) {
-        console.log(`[SessionPool] Size decreased - destroying ${excess} idle sessions`);
+        try {
+          console.log(`[SessionPool] Size decreased - destroying ${excess} idle sessions`);
+        } catch (err) { /* Ignore EPIPE */ }
         for (let i = 0; i < excess; i++) {
           const pooled = this.idleQueue.pop();
           if (pooled) {
