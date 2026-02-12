@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { channels, contractKinds } from '../../src/shared/ipc-contract';
+import { contractKinds } from '../../src/shared/ipc-contract';
 
 type MockElectronAPI = Record<string, ReturnType<typeof vi.fn>>;
 

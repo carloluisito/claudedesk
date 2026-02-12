@@ -4,7 +4,7 @@ import { SplitLayout } from './SplitLayout';
 import type { LayoutNode } from '../../shared/ipc-types';
 
 describe('SplitLayout', () => {
-  const mockRenderPane = vi.fn((paneId: string, sessionId: string | null, isFocused: boolean) => (
+  const mockRenderPane = vi.fn((paneId: string, _sessionId: string | null, isFocused: boolean) => (
     <div data-testid={`pane-${paneId}`} data-focused={isFocused}>
       Pane {paneId}
     </div>

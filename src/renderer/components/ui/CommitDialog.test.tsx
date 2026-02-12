@@ -3,8 +3,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CommitDialog } from './CommitDialog';
 
 const mockStagedFiles = [
-  { path: 'src/index.ts', indexStatus: 'modified', workTreeStatus: 'unmodified', area: 'staged' as const },
-  { path: 'src/utils.ts', indexStatus: 'added', workTreeStatus: 'unmodified', area: 'staged' as const },
+  { path: 'src/index.ts', originalPath: null, indexStatus: 'modified' as const, workTreeStatus: 'unmodified' as const, area: 'staged' as const },
+  { path: 'src/utils.ts', originalPath: null, indexStatus: 'added' as const, workTreeStatus: 'unmodified' as const, area: 'staged' as const },
 ];
 
 const defaultProps = {

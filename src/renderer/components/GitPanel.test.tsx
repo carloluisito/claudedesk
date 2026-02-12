@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 // Mock useGit hook
 const mockUseGit = {
@@ -118,7 +118,7 @@ describe('GitPanel', () => {
     mockUseGit.status = {
       isRepo: true, branch: 'main',
       files: [
-        { path: 'src/index.ts', indexStatus: 'modified', workTreeStatus: 'unmodified', area: 'staged' },
+        { path: 'src/index.ts', originalPath: null, indexStatus: 'modified', workTreeStatus: 'unmodified', area: 'staged' },
       ],
       stagedCount: 1, unstagedCount: 0, untrackedCount: 0, conflictedCount: 0,
       ahead: 0, behind: 0, isDetached: false, hasConflicts: false, upstream: null,
@@ -132,7 +132,7 @@ describe('GitPanel', () => {
     mockUseGit.status = {
       isRepo: true, branch: 'main',
       files: [
-        { path: 'src/utils.ts', indexStatus: 'unmodified', workTreeStatus: 'modified', area: 'unstaged' },
+        { path: 'src/utils.ts', originalPath: null, indexStatus: 'unmodified', workTreeStatus: 'modified', area: 'unstaged' },
       ],
       stagedCount: 0, unstagedCount: 1, untrackedCount: 0, conflictedCount: 0,
       ahead: 0, behind: 0, isDetached: false, hasConflicts: false, upstream: null,
@@ -157,7 +157,7 @@ describe('GitPanel', () => {
     mockUseGit.status = {
       isRepo: true, branch: 'main',
       files: [
-        { path: 'src/utils.ts', indexStatus: 'unmodified', workTreeStatus: 'modified', area: 'unstaged' },
+        { path: 'src/utils.ts', originalPath: null, indexStatus: 'unmodified', workTreeStatus: 'modified', area: 'unstaged' },
       ],
       stagedCount: 0, unstagedCount: 1, untrackedCount: 0, conflictedCount: 0,
       ahead: 0, behind: 0, isDetached: false, hasConflicts: false, upstream: null,
@@ -174,7 +174,7 @@ describe('GitPanel', () => {
   });
 
   it('shows operation status when operation is in progress', () => {
-    mockUseGit.operationInProgress = 'pushing';
+    (mockUseGit as any).operationInProgress = 'pushing';
     render(<GitPanel {...defaultProps} />);
     expect(screen.getByText('pushing...')).toBeInTheDocument();
   });

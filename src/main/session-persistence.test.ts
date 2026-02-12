@@ -144,7 +144,7 @@ describe('session-persistence', () => {
           status: 'running' as const,
           createdAt: 1000,
           exitCode: undefined,
-          currentModel: 'sonnet',
+          currentModel: 'sonnet' as const,
         },
       ];
 
